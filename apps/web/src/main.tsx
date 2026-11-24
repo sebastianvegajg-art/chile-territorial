@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { apiRoot, demoDefault, demoRelease, get, observations } from './api'
+import { demoDefault, demoRelease, downloadObservations, get, observations, standalone } from './api'
 import type { Metric, Observation, Provenance, Publication, Territory, Valuation } from './api'
+import { History } from './history'
+import { comparable, compareValues, derive } from './metrics'
+import type { Derived } from './metrics'
 import './styles.css'
 
 const metrics = [
@@ -9,7 +12,13 @@ const metrics = [
   { id: 'nivel-nominal', label: 'PIB nominal', metric: 'nivel', valuation: 'nominal' },
   { id: 'crecimiento', label: 'Crecimiento real', metric: 'crecimiento', valuation: 'real' },
   { id: 'participacion', label: 'Participación regional', metric: 'participacion', valuation: 'nominal' },
+  { id: 'acumulado', label: 'Crecimiento real acumulado', metric: 'nivel', valuation: 'real' },
+  { id: 'indice', label: 'Índice histórico real', metric: 'nivel', valuation: 'real' },
 ] as const satisfies readonly { id: string; label: string; metric: Metric; valuation: Valuation }[]
+
+const bdeRoot = 'https://si3.bcentral.cl/Siete/ES/Siete/Cuadro/CAP_CCNN/MN_CCNN76/'
+const bdeReal = bdeRoot + 'CCNN2018_PIB_REGIONAL'
+const bdeNominal = bdeRoot + 'CCNN2018_PIB_REGIONAL_N/637899740344107786'
 
 const number = new Intl.NumberFormat('es-CL', { maximumFractionDigits: 2 })
 const status = {
@@ -39,9 +48,10 @@ function App() {
   const [cut, setCut] = useState('')
   const [selected, setSelected] = useState(['11'])
   const [benchmark, setBenchmark] = useState(true)
-  const [year, setYear] = useState(2025)
+  const [start, setStart] = useState(2013)
+  const [end, setEnd] = useState<number | null>(null)
   const [measure, setMeasure] = useState<(typeof metrics)[number]['id']>('nivel-real')
-  const [view, setView] = useState<'chart' | 'table'>('chart')
+  const [view, setView] = useState<'chart' | 'ranking' | 'table'>('chart')
   const [retry, setRetry] = useState(0)
   const [metadata, setMetadata] = useState({ loading: true, error: '' })
   const [result, setResult] = useState<{ key: string; rows: Observation[]; publication: string; error: string }>({
@@ -50,31 +60,74 @@ function App() {
   const [detail, setDetail] = useState<{ id: string; row?: Provenance; error?: string } | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState('')
+  const [offlineDownload, setOfflineDownload] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
   const provenanceRequest = useRef<AbortController | null>(null)
 
   const metric = metrics.find(item => item.id === measure)!
+  const derived: Derived | undefined = measure === 'acumulado' || measure === 'indice' ? measure : undefined
   const regions = territories.filter(item => item.nivel === 'regional' && item.codigo !== 'CL')
   const chosen = regions.filter(item => selected.includes(item.codigo))
   const chile = territories.find(item => item.codigo === 'CL')
   const showBenchmark = benchmark && metric.metric !== 'participacion'
+  const requestedTerritories = metric.metric === 'participacion' ? regions : territories
   const compared = showBenchmark && chile ? [...chosen, chile] : chosen
   const publication = mode === 'demo' ? demoRelease : cut || releases[0]?.id
   const query = new URLSearchParams({
-    anio_desde: String(year), anio_hasta: String(year), metrica: metric.metric, valoracion: metric.valuation,
+    anio_desde: '2013', anio_hasta: String(new Date().getFullYear()), metrica: metric.metric, valoracion: metric.valuation,
   })
   if (publication) query.set('publicacion', publication)
-  for (const item of compared) query.append('territorios', item.codigo)
+  for (const item of requestedTerritories) query.append('territorios', item.codigo)
   const key = publication && compared.length && chosen.length && !metadata.loading && !metadata.error ? query.toString() : ''
   const active = key && key === result.key ? result : null
   const isDemo = mode === 'demo' || active?.rows.some(row => row.clase === 'prueba')
   const errors = metadata.error || active?.error
   const pendingOfficial = mode === 'official' && !metadata.loading && !metadata.error && !publication
   const loading = metadata.loading || (!!key && !active)
-  const rows = compared.map(territory => ({ territory, row: active?.rows.find(row => row.territorio === territory.codigo) }))
-  const unit = active?.rows.find(row => row.valor !== null)?.unidad ?? active?.rows[0]?.unidad
+  const publishedYears = active?.rows.filter(row => row.valor !== null).map(row => row.anio) ?? []
+  const latest = publishedYears.length ? Math.max(...publishedYears) : new Date().getFullYear()
+  const last = Math.max(start, end ?? latest)
+  const years = Array.from({ length: last - start + 1 }, (_, index) => start + index)
+  const options = Array.from({ length: Math.max(latest, start, end ?? 2013) - 2012 }, (_, index) => 2013 + index)
+  const observationByKey = new Map(active?.rows.map(row => [`${row.territorio}/${row.anio}`, row]))
+  const raw = (code: string, year: number) => observationByKey.get(`${code}/${year}`)
+  const series = compared.map(territory => {
+    const observations = new Map<number, Observation>()
+    for (const year of years) {
+      const row = raw(territory.codigo, year)
+      if (row) observations.set(year, derived ? derive(row, raw(territory.codigo, start), derived) : row)
+    }
+    return { territory, years: observations }
+  })
+  const tableRows = [...years].reverse().flatMap(year => series.map(({ territory, years }) => ({
+    territory, row: years.get(year), year,
+  })))
+  const rowsAtEnd = series.map(({ territory, years }) => ({ territory, row: years.get(last) }))
+  const regionalValues = rowsAtEnd.filter(({ territory, row }) => territory.codigo !== 'CL' && row?.valor != null)
+  const comparableRanking = regionalValues.every(({ row }) => comparable(row!, regionalValues[0].row!))
+  const ranked = regionalValues.sort((left, right) => compareValues(right.row!.valor!, left.row!.valor!))
+  const rows = [...ranked, ...rowsAtEnd.filter(item => !ranked.includes(item))]
+  const unitRow = tableRows.find(({ row }) => row?.valor != null)?.row ?? tableRows.find(({ row }) => row)?.row
+  const unit = unitRow?.unidad
   const magnitude = Math.max(1, ...rows.map(({ row }) => Math.abs(Number(row?.valor ?? 0))))
   const hasNegative = rows.some(({ row }) => Number(row?.valor) < 0)
+  const chosenPublication = releases.find(item => item.id === active?.publication)
+  const publicTables = chosenPublication?.id.startsWith('bcch-bde-publico-')
+
+  function chooseStart(year: number) {
+    setStart(year)
+    if (end !== null && end < year) setEnd(year)
+    setDownloadError('')
+  }
+
+  useEffect(() => {
+    if (standalone || mode !== 'official') return
+    const request = new AbortController()
+    fetch('/descargas/Chile_Territorial_Oficial.html', { method: 'HEAD', signal: request.signal })
+      .then(response => setOfflineDownload(response.ok && !!response.headers.get('Content-Disposition')))
+      .catch(() => {})
+    return () => request.abort()
+  }, [mode])
 
   useEffect(() => {
     const sync = () => setPage(location.hash === '#metodologia' ? 'metodologia' : 'comparar')
@@ -89,7 +142,9 @@ function App() {
       get<Publication[]>('/publicaciones', request.signal),
     ]).then(([data, publications]) => {
       setTerritories(data)
-      setReleases(publications.filter(item => item.estado === 'aprobada'))
+      const approved = publications.filter(item => item.estado === 'aprobada')
+      setReleases(approved)
+      setCut(previous => previous || approved[0]?.id || '')
       setMetadata({ loading: false, error: '' })
     }).catch(error => {
       if (!request.signal.aborted) setMetadata({ loading: false, error: error.message })
@@ -117,6 +172,17 @@ function App() {
     setSelected(previous => previous.includes(code) ? previous.filter(item => item !== code) : [...previous, code])
   }
 
+  function explainDerived(row: Observation) {
+    const base = raw(row.territorio, start)
+    setDetail({ id: row.id, row: {
+      observacion: row.id, publicacion: row.publicacion, serie_bde: null, artefacto: null, selector: null,
+      formula_version: derived === 'indice' ? '100 × nivel real actual / nivel real base' : '100 × (nivel real actual / nivel real base − 1)',
+      insumos: [...new Set([row.id, base?.id].filter((id): id is string => !!id))],
+      motivo: `Año base ${start}. Redondeo a ocho decimales. Los insumos pueden consultarse en PIB real.`,
+    } })
+    dialog.current?.showModal()
+  }
+
   async function explain(row: Observation) {
     provenanceRequest.current?.abort()
     const request = new AbortController()
@@ -136,14 +202,31 @@ function App() {
     setDownloading(true)
     setDownloadError('')
     try {
-      const filters = new URLSearchParams(key)
-      filters.set('publicacion', active.publication)
-      const response = await fetch(`${apiRoot}/pib.csv?${filters}`)
-      if (!response.ok || response.headers.get('X-Publicacion') !== active.publication) throw new Error()
-      const url = URL.createObjectURL(await response.blob())
+      let blob: Blob
+      if (derived) {
+        const csv = [
+          ['territorio', 'anio', 'metrica', 'valor', 'unidad', 'estado', 'clase', 'publicacion', 'anio_base', 'nivel_real_actual', 'nivel_real_base', 'id_nivel_actual', 'id_nivel_base'],
+          ...tableRows.map(({ territory, year, row }) => {
+            const current = raw(territory.codigo, year)
+            const base = raw(territory.codigo, start)
+            return [territory.codigo, year, derived, row?.valor, row?.unidad, row?.estado ?? 'faltante',
+              row?.clase ?? 'no_disponible', active.publication, start, current?.valor, base?.valor, current?.id, base?.id]
+          }),
+        ].map(fields => fields.join(',')).join('\r\n')
+        blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+      } else {
+        const filters = new URLSearchParams(key)
+        filters.set('anio_desde', String(start))
+        filters.set('anio_hasta', String(last))
+        filters.set('publicacion', active.publication)
+        filters.delete('territorios')
+        compared.forEach(item => filters.append('territorios', item.codigo))
+        blob = await downloadObservations(filters, active.publication)
+      }
+      const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       anchor.href = url
-      anchor.download = `pib-${active.publication}-${year}.csv`
+      anchor.download = `pib-${active.publication}-${measure}-${start}-${last}.csv`
       anchor.click()
       window.setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch {
@@ -179,7 +262,11 @@ function App() {
               <dt>PIB nominal</dt><dd>Valor de la producción a precios corrientes, en millones de pesos.</dd>
               <dt>Crecimiento real</dt><dd>Variación porcentual respecto al año anterior compatible. Se utiliza la fórmula 100 × (PIB real actual / PIB real anterior − 1).</dd>
               <dt>Participación regional</dt><dd>PIB nominal regional dividido por el PIB nominal nacional del mismo año y corte, expresado como porcentaje. Solo aplica a regiones.</dd>
-              <dt>Procedencia</dt><dd>Consulta el origen de cada fila en la tabla. Los datos sintéticos están identificados como prueba. Un cero informado conserva su valor y cada ausencia conserva su estado.</dd>
+              <dt>Crecimiento acumulado e índice histórico</dt><dd>Ambos usan el PIB real del año inicial seleccionado como base. El índice divide el nivel de cada año por la base y multiplica por 100. El crecimiento acumulado equivale al índice menos 100. Se requiere una base positiva y compatible.</dd>
+              <dt>Ranking del último año</dt><dd>Orden descendente de las regiones seleccionadas con un valor comparable. Los empates comparten posición y Chile figura como referencia.</dd>
+              <dt>Fuente oficial</dt><dd>Base de Datos Estadísticos del Banco Central de Chile. <a href={bdeReal}>Cuadro de PIB real</a> y <a href={bdeNominal}>cuadro de PIB nominal</a>.</dd>
+              <dt>Precisión del corte BDE público</dt><dd>Los cuadros aportan los niveles redondeados a miles de millones de pesos. La conversión a millones es exacta. Las tasas y participaciones calculadas usan esos niveles y pueden diferir de los indicadores publicados con más precisión por el Banco Central.</dd>
+              <dt>Procedencia</dt><dd>Consulta el origen y la precisión disponible en la tabla. La escala del gráfico es aproximada. Los datos sintéticos están identificados como prueba. Un cero informado conserva su valor y cada ausencia conserva su estado.</dd>
             </dl>
             <a className="primary link-button" href="#comparar">Volver al comparador</a>
           </article>
@@ -197,30 +284,35 @@ function App() {
             <div className="dashboard">
               <aside className="filters panel" aria-labelledby="filters">
                 <h2 id="filters">Filtros</h2>
-                <label className="field">Origen de los datos
+                {!standalone && <label className="field">Origen de los datos
                   <select value={mode} onChange={event => { setMode(event.target.value as typeof mode); setDownloadError('') }}>
                     <option value="official">Publicaciones oficiales</option>
                     <option value="demo">Demostración sintética</option>
                   </select>
-                </label>
+                </label>}
                 {mode === 'official' && releases.length > 0 && <label className="field">Corte
                   <select value={cut} onChange={event => { setCut(event.target.value); setDownloadError('') }}>
-                    <option value="">Última publicación</option>
                     {releases.map(item => <option key={item.id} value={item.id}>{item.fecha.slice(0, 10)} · {item.id}</option>)}
                   </select>
                 </label>}
                 <div className="field-pair">
-                  <label className="field">Año
-                    <select value={year} onChange={event => { setYear(Number(event.target.value)); setDownloadError('') }}>
-                      {Array.from({ length: Math.max(2025, new Date().getFullYear()) - 2012 }, (_, index) => 2013 + index).reverse().map(value => <option key={value}>{value}</option>)}
+                  <label className="field">Desde
+                    <select value={start} onChange={event => chooseStart(Number(event.target.value))}>
+                      {options.map(value => <option key={value}>{value}</option>)}
                     </select>
                   </label>
-                  <label className="field">Indicador
-                    <select value={measure} onChange={event => { setMeasure(event.target.value as typeof measure); setDownloadError('') }}>
-                      {metrics.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+                  <label className="field">Hasta
+                    <select value={end ?? ''} onChange={event => { setEnd(event.target.value ? Number(event.target.value) : null); setDownloadError('') }}>
+                      <option value="">Último disponible</option>
+                      {options.filter(value => value >= start).reverse().map(value => <option key={value}>{value}</option>)}
                     </select>
                   </label>
                 </div>
+                <label className="field">Indicador
+                  <select value={measure} onChange={event => { setMeasure(event.target.value as typeof measure); setDownloadError('') }}>
+                    {metrics.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+                  </select>
+                </label>
                 <fieldset>
                   <legend>Regiones</legend>
                   <div className="region-actions">
@@ -238,13 +330,19 @@ function App() {
               <section className="panel results" aria-labelledby="results" aria-busy={loading}>
                 <div className="results-top">
                   <div>
-                    <p className="eyebrow">{year} · {chosen.length} {chosen.length === 1 ? 'región' : 'regiones'}</p>
+                    <p className="eyebrow">{start === last ? start : `${start}–${last}`} · {chosen.length} {chosen.length === 1 ? 'región' : 'regiones'}</p>
                     <h2 id="results">{metric.label} por región</h2>
-                    {unit && <p className="subtle">{unit}{active?.rows[0]?.anio_referencia && ` · Referencia ${active.rows[0].anio_referencia}`}</p>}
+                    {unit && <p className="subtle">{unit}{derived ? ` · Base ${start}` : unitRow?.anio_referencia && ` · Referencia ${unitRow.anio_referencia}`}</p>}
                   </div>
-                  <button className="primary" disabled={!active?.publication || downloading} onClick={download}>
-                    <span aria-hidden="true">↓</span> {downloading ? 'Descargando…' : 'Descargar CSV'}
-                  </button>
+                  <div className="result-downloads">
+                    <button className="primary" disabled={!active?.publication || downloading} onClick={download}>
+                      <span aria-hidden="true">↓</span> {downloading ? 'Descargando…' : 'Descargar CSV'}
+                    </button>
+                    {offlineDownload && mode === 'official' && <>
+                      <a href="/descargas/Chile_Territorial_Oficial.html" download aria-describedby="offline-description">Descargar HTML autónomo</a>
+                      <small id="offline-description" className="subtle">Copia del corte completo</small>
+                    </>}
+                  </div>
                 </div>
                 {isDemo && <p className="notice"><strong>Datos sintéticos</strong> · Demostración del comparador. Las cifras son ficticias.</p>}
                 {downloadError && <p className="error" role="alert">{downloadError}</p>}
@@ -260,38 +358,41 @@ function App() {
                 ) : pendingOfficial ? <p className="empty">Aún no hay publicaciones oficiales disponibles. La demostración sintética se activa desde los filtros.</p> : !chosen.length ? <p className="empty">Selecciona al menos una región para comparar.</p> : (
                   <>
                     <div className="view-switch" role="group" aria-label="Visualización">
-                      <button aria-pressed={view === 'chart'} onClick={() => setView('chart')}>Gráfico</button>
+                      <button aria-pressed={view === 'chart'} onClick={() => setView('chart')}>Serie histórica</button>
+                      <button aria-pressed={view === 'ranking'} onClick={() => setView('ranking')}>Ranking {last}</button>
                       <button aria-pressed={view === 'table'} onClick={() => setView('table')}>Tabla y procedencia</button>
                     </div>
-                    {view === 'chart' ? (
-                      <ul className="chart" aria-label={`${metric.label} por región en ${year}`}>
+                    {view === 'chart' ? <History series={series} years={years} label={metric.label} /> : view === 'ranking' ? (
+                      comparableRanking ? <ul className="chart" aria-label={`${metric.label} por región en ${last}`}>
                         {rows.map(({ territory, row }) => {
                           const value = Number(row?.valor ?? 0)
                           const width = Math.abs(value) / magnitude * (hasNegative ? 50 : 100)
+                          const rank = row?.valor == null ? 0 : ranked.findIndex(item => compareValues(item.row!.valor!, row.valor!) === 0) + 1
                           return <li key={territory.codigo}>
-                            <span className="chart-label">{territory.nombre}</span>
+                            <span className="chart-label">{territory.codigo !== 'CL' && rank > 0 && `${rank}. `}{territory.nombre}</span>
                             <span className={`track ${hasNegative ? 'diverging' : ''}`} aria-hidden="true">
                               {row?.valor != null && <span className={`bar ${territory.codigo === 'CL' ? 'reference' : ''}`} style={{ width: `${width}%`, left: `${hasNegative ? (value < 0 ? 50 - width : 50) : 0}%` }} />}
                             </span>
                             <span className="chart-value">{row?.valor == null ? (row ? status[row.estado] : 'Sin dato') : number.format(value)}</span>
                           </li>
                         })}
-                      </ul>
+                      </ul> : <p className="empty">Las regiones seleccionadas usan unidades o referencias distintas en {last}.</p>
                     ) : (
                       <div className="table-scroll" tabIndex={0} aria-label="Tabla de PIB regional" role="region">
-                        <table>
-                          <caption className="sr-only">{metric.label}, {year}{unit ? `, ${unit}` : ''}</caption>
-                          <thead><tr><th scope="col">Territorio</th><th scope="col">Valor</th><th scope="col">Evidencia</th><th scope="col">Procedencia</th></tr></thead>
-                          <tbody>{rows.map(({ territory, row }) => <tr key={territory.codigo}>
-                            <th scope="row">{territory.nombre}</th>
-                            <td>{display(row)}</td>
-                            <td>{row ? evidence(row) : 'Sin dato'}{row?.estado === 'preliminar' && ' · Preliminar'}</td>
-                            <td>{row ? <button className="text-button" aria-label={`Ver procedencia de ${territory.nombre}`} onClick={() => explain(row)}>Ver detalle</button> : '—'}</td>
+                        <table className="history-table">
+                          <caption className="sr-only">{metric.label}, {start}–{last}{unit ? `, ${unit}` : ''}</caption>
+                          <thead><tr><th scope="col">Año</th><th scope="col">Territorio</th><th scope="col" className="numeric">Valor</th><th scope="col">Evidencia</th><th scope="col">Procedencia</th></tr></thead>
+                          <tbody>{tableRows.map(({ territory, row, year }) => <tr key={`${territory.codigo}/${year}`}>
+                            <td>{year}</td><th scope="row">{territory.nombre}</th>
+                            <td className="numeric">{display(row)}</td>
+                            <td>{row ? (derived && row.clase === 'oficial' ? 'Calculado con datos oficiales' : evidence(row)) : 'Sin dato'}{row?.estado === 'preliminar' && ' · Preliminar'}</td>
+                            <td>{row ? <button className="text-button" aria-label={`Ver procedencia de ${territory.nombre} en ${year}`} onClick={() => derived ? explainDerived(row) : explain(row)}>Ver detalle</button> : '—'}</td>
                           </tr>)}</tbody>
                         </table>
                       </div>
                     )}
-                    <p className="result-source"><strong>Corte</strong> {active?.publication ?? '—'}{isDemo ? ' · Fuente de prueba' : active?.publication ? ` · Fuente: ${releases.find(item => item.id === active.publication)?.fuente ?? 'Banco Central de Chile'}` : ''}</p>
+                    <p className="result-source"><strong>Corte</strong> {active?.publication ?? '—'}{isDemo ? ' · Fuente de prueba' : active?.publication ? ` · Fuente: ${chosenPublication?.fuente ?? 'Banco Central de Chile'}` : ''}{chosenPublication && ` · Fecha del corte local: ${chosenPublication.fecha.slice(0, 10)}`}</p>
+                    {publicTables && <p className="subtle">Niveles de origen redondeados a miles de millones de pesos. <a href={metric.valuation === 'real' ? bdeReal : bdeNominal}>Ver cuadro del Banco Central</a>.</p>}
                   </>
                 )}
               </section>
@@ -308,6 +409,7 @@ function App() {
             <dt>Observación</dt><dd>{detail.row.observacion}</dd>
             <dt>Corte</dt><dd>{detail.row.publicacion}</dd>
             {detail.row.serie_bde && <><dt>Serie BDE</dt><dd>{detail.row.serie_bde}</dd></>}
+            {publicTables && <><dt>Cuadro de origen</dt><dd><a href={metric.valuation === 'real' ? bdeReal : bdeNominal}>Base de Datos Estadísticos del Banco Central de Chile</a></dd></>}
             {detail.row.artefacto && <><dt>Artefacto</dt><dd>{detail.row.artefacto}</dd></>}
             {detail.row.selector && <><dt>Registro de origen</dt><dd>{detail.row.selector}</dd></>}
             {detail.row.formula_version && <><dt>Fórmula</dt><dd>{detail.row.formula_version}</dd></>}

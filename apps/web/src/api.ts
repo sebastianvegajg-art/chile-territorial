@@ -45,6 +45,27 @@ export interface Provenance {
   motivo: string | null
 }
 
+interface Snapshot {
+  territories: Territory[]
+  publication: Publication
+  rows: Observation[]
+  provenance: Record<string, Provenance>
+}
+
+const embedded = document.getElementById('ct-snapshot')
+const snapshot: Snapshot | null = embedded ? JSON.parse(embedded.textContent ?? '') : null
+export const standalone = snapshot !== null
+
+function selectRows(data: Snapshot, filters: URLSearchParams) {
+  if (filters.get('publicacion') !== data.publication.id) throw new Error('El corte solicitado no está disponible.')
+  const territories = filters.getAll('territorios')
+  return data.rows.filter(row =>
+    territories.includes(row.territorio) && row.metrica === filters.get('metrica') &&
+    row.valoracion === filters.get('valoracion') && row.anio >= Number(filters.get('anio_desde')) &&
+    row.anio <= Number(filters.get('anio_hasta')),
+  )
+}
+
 interface Page {
   datos: Observation[]
   total: number
@@ -52,6 +73,14 @@ interface Page {
 }
 
 export async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
+  if (snapshot) {
+    if (path === '/territorios') return snapshot.territories as T
+    if (path === '/publicaciones') return [snapshot.publication] as T
+    const match = path.match(/^\/observaciones\/([^/]+)\/procedencia$/)
+    const entry = match && snapshot.provenance[decodeURIComponent(match[1])]
+    if (entry) return entry as T
+    throw new Error('La procedencia solicitada no está en este corte.')
+  }
   const response = await fetch(apiRoot + path, { signal })
   if (!response.ok) {
     const body = await response.json().catch(() => null)
@@ -61,6 +90,7 @@ export async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
 }
 
 export async function observations(query: URLSearchParams, signal: AbortSignal) {
+  if (snapshot) return { rows: selectRows(snapshot, query), publication: snapshot.publication.id }
   const request = new URLSearchParams(query)
   request.set('limite', '500')
   const first = await get<Page>(`/pib?${request}`, signal)
@@ -75,4 +105,19 @@ export async function observations(query: URLSearchParams, signal: AbortSignal) 
     rows.push(...next.datos)
   }
   return { rows, publication: first.publicacion }
+}
+
+export async function downloadObservations(filters: URLSearchParams, publication: string) {
+  if (snapshot) {
+    const fields = ['id', 'territorio', 'anio', 'metrica', 'valoracion', 'valor', 'unidad',
+      'anio_referencia', 'estado', 'clase', 'publicacion'] as const
+    const csv = [fields.join(','), ...selectRows(snapshot, filters).map(row => fields.map(field => {
+      const value = String(row[field] ?? '')
+      return /[,"\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value
+    }).join(','))].join('\r\n')
+    return new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  }
+  const response = await fetch(`${apiRoot}/pib.csv?${filters}`)
+  if (!response.ok || response.headers.get('X-Publicacion') !== publication) throw new Error()
+  return response.blob()
 }

@@ -1,5 +1,44 @@
 # Avance de la primera fase
 
+## Reactivación del 24 de noviembre de 2026
+
+`fase1/integracion-oficial` parte del PR #10 (`b3145c3`) e incorpora el commit de `demo/preview-v0.2.0`. Se revisaron 12 ramas y los PR #1 a #10. `main` conserva la arquitectura `v0.1.0`. La rama de la demo aportaba una presentación descargable con datos sintéticos. Las referencias revisadas no contenían una carga oficial posterior.
+
+| Frente | Resultado en la rama de integración |
+|---|---|
+| Recuperación y arquitectura | Base común con las contribuciones previas, arranque local explícito y contratos v0.1.0. |
+| Banco Central | Ingesta de los cuadros públicos de PIB anual real y nominal, conservación de originales, códigos BDE y huellas. La igualdad a precisión de serie con la API autenticada y el Excel experimental queda por verificar. |
+| Economía territorial | Fórmulas, linaje y pruebas para crecimiento acumulado, índice histórico y ranking. Los indicadores sectoriales quedan definidos a la espera de datos comparables. |
+| Frontend | Selección múltiple, navegación por año e historial, rankings y descargas con corte de origen. Demostración autónoma regenerable con el mismo corte. |
+| Backend y almacenamiento | Cargador que valida esquema y huellas antes de cargar el corte oficial en PostgreSQL. FastAPI sirve los datos y la procedencia con roles separados. |
+| Finanzas públicas | Inventario y cuatro cruces del piloto de Aysén, con límites de cobertura y conciliación en [el registro fiscal](../pipelines/fiscal/README.md). |
+| Auditoría | Cobertura, contraste de cifras, revisión de fórmulas y pruebas de integración en [calidad del PIB](CALIDAD_PIB.md). |
+
+## Ejecución local con datos oficiales
+
+Desde la raíz, prepara las dependencias:
+
+```sh
+python -m venv .venv
+.venv/bin/pip install -r apps/api/requirements.txt
+npm --cache "${TMPDIR:-/tmp}/ct-npm" ci --prefix apps/web
+```
+
+Sigue la [ingesta pública](../pipelines/economia/README.md) para obtener el lote y sus originales en `data/`. Inicializa PostgreSQL con `PIB_DB_MODE=aprobada infra/pib-db.sh iniciar` y la configuración descrita en [infraestructura](../infra/README.md). Con `DATABASE_URL` de ingesta, carga el lote según las [instrucciones de la API](../apps/api/README.md).
+
+Cambia `DATABASE_URL` a la conexión de lectura y ejecuta `CT_PYTHON=.venv/bin/python infra/demo-local.sh oficial`. Abre `http://127.0.0.1:5173`. Los archivos oficiales quedan en el directorio de datos local, fuera de Git. El CSV de la aplicación identifica el corte usado para consultarlos.
+
+Con la API activa, exporta la versión autónoma desde la raíz:
+
+```sh
+npm --prefix apps/web run build
+node apps/web/scripts/export-html.mjs data/published/Chile_Territorial_Oficial.html
+```
+
+Abre el archivo en un navegador o usa «Descargar HTML autónomo» en el comparador local. La copia incluye los datos y su procedencia, y permite consultar el corte sin conexión.
+
+## Estado anterior a la reactivación
+
 Base aprobada `v0.1.0`. Actualizado el 24 de noviembre de 2026. Las ramas de componentes se revisan por separado. Esta rama reúne los cambios para probarlos localmente.
 
 | Tarea | Resultado y evidencia | Estado |
