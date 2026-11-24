@@ -16,6 +16,13 @@ const metrics = [
   { id: 'indice', label: 'Índice histórico real', metric: 'nivel', valuation: 'real' },
 ] as const satisfies readonly { id: string; label: string; metric: Metric; valuation: Valuation }[]
 
+const regionPresets = [
+  { id: 'aysen', label: 'Aysén', codes: ['11'] },
+  { id: 'austral', label: 'Austral', codes: ['10', '11', '12'] },
+  { id: 'norte', label: 'Norte', codes: ['15', '01', '02', '03', '04'] },
+  { id: 'centro-sur', label: 'Centro-Sur', codes: ['05', '13', '06', '07', '16', '08', '09', '14'] },
+] as const
+
 const bdeRoot = 'https://si3.bcentral.cl/Siete/ES/Siete/Cuadro/CAP_CCNN/MN_CCNN76/'
 const bdeReal = bdeRoot + 'CCNN2018_PIB_REGIONAL'
 const bdeNominal = bdeRoot + 'CCNN2018_PIB_REGIONAL_N/637899740344107786'
@@ -38,6 +45,22 @@ function display(row?: Observation) {
   // Preserve the original decimal string in the table and CSV. The chart uses an approximate scale.
   const [integer, fraction] = row.valor.split('.')
   return [integer.replace(/\B(?=(\d{3})+(?!\d))/g, '.'), fraction].filter(Boolean).join(',')
+}
+
+function formatKpiValue(row?: Observation) {
+  if (row?.valor == null) return '—'
+  const formatted = number.format(Number(row.valor))
+  return row.unidad === '%' ? `${formatted}%` : formatted
+}
+
+function formatReleaseDate(value?: string) {
+  if (!value || value === '—') return '—'
+  if (value.includes('T')) {
+    const date = value.slice(0, 10)
+    const time = value.slice(11, 19).replace(/Z$/, '')
+    return time ? `${date} · ${time} UTC` : date
+  }
+  return value.slice(0, 10)
 }
 
 function App() {
@@ -67,6 +90,7 @@ function App() {
   const metric = metrics.find(item => item.id === measure)!
   const derived: Derived | undefined = measure === 'acumulado' || measure === 'indice' ? measure : undefined
   const regions = territories.filter(item => item.nivel === 'regional' && item.codigo !== 'CL')
+  const regionCodeSet = new Set(regions.map(item => item.codigo))
   const chosen = regions.filter(item => selected.includes(item.codigo))
   const chile = territories.find(item => item.codigo === 'CL')
   const showBenchmark = benchmark && metric.metric !== 'participacion'
@@ -105,14 +129,32 @@ function App() {
   const rowsAtEnd = series.map(({ territory, years }) => ({ territory, row: years.get(last) }))
   const regionalValues = rowsAtEnd.filter(({ territory, row }) => territory.codigo !== 'CL' && row?.valor != null)
   const comparableRanking = regionalValues.every(({ row }) => comparable(row!, regionalValues[0].row!))
-  const ranked = regionalValues.sort((left, right) => compareValues(right.row!.valor!, left.row!.valor!))
+  const ranked = [...regionalValues].sort((left, right) => compareValues(right.row!.valor!, left.row!.valor!))
   const rows = [...ranked, ...rowsAtEnd.filter(item => !ranked.includes(item))]
   const unitRow = tableRows.find(({ row }) => row?.valor != null)?.row ?? tableRows.find(({ row }) => row)?.row
   const unit = unitRow?.unidad
   const magnitude = Math.max(1, ...rows.map(({ row }) => Math.abs(Number(row?.valor ?? 0))))
   const hasNegative = rows.some(({ row }) => Number(row?.valor) < 0)
   const chosenPublication = releases.find(item => item.id === active?.publication)
+  const activeRelease: Publication | undefined = mode === 'demo'
+    ? { id: demoRelease, fecha: '—', estado: 'prueba', fuente: 'Demostración sintética local' }
+    : (chosenPublication ?? releases.find(item => item.id === (cut || releases[0]?.id)) ?? releases[0])
   const publicTables = chosenPublication?.id.startsWith('bcch-bde-publico-')
+
+  // KPI strip: cifras derivadas exclusivamente del corte activo
+  const leader = comparableRanking ? ranked[0] : undefined
+  const tiedLeaders = leader?.row?.valor != null
+    ? ranked.filter(item => compareValues(item.row!.valor!, leader.row!.valor!) === 0)
+    : []
+  const chileRawAtEnd = raw('CL', last)
+  const chileRowAtEnd = chileRawAtEnd
+    ? (derived ? derive(chileRawAtEnd, raw('CL', start), derived) : chileRawAtEnd)
+    : undefined
+  const participationSum = metric.metric === 'participacion' && comparableRanking && regionalValues.length > 0
+    ? regionalValues.reduce((acc, item) => acc + Number(item.row!.valor), 0)
+    : null
+  const releaseCoverage = chosenPublication?.cobertura
+  const selectedWithValue = tableRows.filter(({ row }) => row?.valor != null).length
 
   function chooseStart(year: number) {
     setStart(year)
@@ -236,6 +278,10 @@ function App() {
     }
   }
 
+  const activeReleaseCoveragePct = activeRelease?.cobertura && activeRelease.cobertura.esperadas > 0
+    ? Math.min(100, (activeRelease.cobertura.disponibles / activeRelease.cobertura.esperadas) * 100)
+    : null
+
   return (
     <>
       <a className="skip-link" href="#contenido">Ir al contenido principal</a>
@@ -255,9 +301,76 @@ function App() {
       <main id="contenido" className="wrap" tabIndex={-1}>
         {page === 'metodologia' ? (
           <article className="method">
+            <p className="eyebrow">Observatorio económico · Cuentas Nacionales</p>
             <h1>Metodología</h1>
-            <p className="lede">Qué mide cada indicador del comparador y cómo interpretar los resultados.</p>
-            <dl>
+            <p className="lede">Qué mide cada indicador del comparador, cómo interpretar los resultados y cuál es el estado del corte activo.</p>
+
+            <section className="method-release panel" aria-labelledby="corte-activo-titulo">
+              <div className="method-release-head">
+                <h2 id="corte-activo-titulo">Corte activo y cobertura</h2>
+                {activeRelease && (
+                  <span className={`status-badge ${activeRelease.estado === 'aprobada' ? 'is-official' : 'is-demo'}`}>
+                    {activeRelease.estado === 'aprobada' ? 'Oficial' : 'Prueba'}
+                  </span>
+                )}
+              </div>
+              {metadata.loading ? (
+                <p className="subtle" role="status">Cargando metadatos del corte…</p>
+              ) : metadata.error ? (
+                <p className="error" role="alert">{metadata.error}</p>
+              ) : !activeRelease ? (
+                <p className="subtle">No hay publicaciones oficiales registradas en el servicio.</p>
+              ) : (
+                <>
+                  <dl className="release-grid">
+                    <div>
+                      <dt>Corte cargado</dt>
+                      <dd className="mono">{activeRelease.id}</dd>
+                    </div>
+                    <div>
+                      <dt>Fuente</dt>
+                      <dd>{activeRelease.fuente}</dd>
+                    </div>
+                    <div>
+                      <dt>Fecha de actualización / extracción</dt>
+                      <dd>{formatReleaseDate(activeRelease.fecha)}</dd>
+                    </div>
+                    <div>
+                      <dt>Cobertura</dt>
+                      <dd>
+                        {activeRelease.cobertura ? (
+                          <div className="coverage-block">
+                            <span>
+                              <strong>{number.format(activeRelease.cobertura.disponibles)}</strong> / {number.format(activeRelease.cobertura.esperadas)} observaciones
+                              {activeReleaseCoveragePct !== null && ` (${number.format(activeReleaseCoveragePct)}%)`}
+                            </span>
+                            {activeReleaseCoveragePct !== null && (
+                              <span className="coverage-meter" aria-hidden="true">
+                                <span style={{ width: `${activeReleaseCoveragePct}%` }} />
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          'No informada en el registro de este corte'
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="release-notes">
+                    <h3>Notas de versión</h3>
+                    {activeRelease.cambios && activeRelease.cambios.length > 0 ? (
+                      <ul className="changelog">
+                        {activeRelease.cambios.map((note, index) => <li key={index}>{note}</li>)}
+                      </ul>
+                    ) : (
+                      <p className="subtle">Sin notas de versión registradas para este corte.</p>
+                    )}
+                  </div>
+                </>
+              )}
+            </section>
+
+            <dl className="method-definitions">
               <dt>PIB real</dt><dd>Volumen encadenado en millones de pesos. El año de referencia figura en cada observación. Los componentes encadenados pueden no sumar el total oficial.</dd>
               <dt>PIB nominal</dt><dd>Valor de la producción a precios corrientes, en millones de pesos.</dd>
               <dt>Crecimiento real</dt><dd>Variación porcentual respecto al año anterior compatible. Se utiliza la fórmula 100 × (PIB real actual / PIB real anterior − 1).</dd>
@@ -274,11 +387,16 @@ function App() {
           <>
             <section className="intro">
               <div>
-                <p className="eyebrow">Economía regional · Chile</p>
+                <p className="eyebrow">Observatorio económico regional · Chile</p>
                 <h1>Comparador de PIB</h1>
-                <p className="lede">Compara la actividad económica de las 16 regiones y usa el total de Chile como referencia.</p>
+                <p className="lede">Compara la actividad económica de las 16 regiones y usa el total de Chile como referencia con trazabilidad por corte oficial.</p>
               </div>
-
+              {regions.length > 0 && (
+                <div className="intro-index" aria-hidden="true">
+                  <strong>{regions.length}</strong>
+                  <span>Regiones · {start}–{last}</span>
+                </div>
+              )}
             </section>
 
             <div className="dashboard">
@@ -316,8 +434,26 @@ function App() {
                 <fieldset>
                   <legend>Regiones</legend>
                   <div className="region-actions">
-                    <button type="button" className="text-button" disabled={!regions.length} onClick={() => setSelected(regions.map(item => item.codigo))}>Seleccionar todas</button>
-                    <button type="button" className="text-button" disabled={!selected.length} onClick={() => setSelected([])}>Limpiar</button>
+                    <button type="button" className="text-button" disabled={!regions.length} onClick={() => { setDownloadError(''); setSelected(regions.map(item => item.codigo)) }}>Seleccionar todas</button>
+                    <button type="button" className="text-button" disabled={!selected.length} onClick={() => { setDownloadError(''); setSelected([]) }}>Limpiar</button>
+                  </div>
+                  <div className="region-presets" role="group" aria-label="Atajos por macrozona">
+                    {regionPresets.map(preset => {
+                      const presetCodes = preset.codes.filter(code => regionCodeSet.has(code))
+                      const isActive = presetCodes.length > 0 && presetCodes.length === selected.length && presetCodes.every(code => selected.includes(code))
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          className="preset-chip"
+                          aria-pressed={isActive}
+                          disabled={!presetCodes.length}
+                          onClick={() => { setDownloadError(''); setSelected(presetCodes) }}
+                        >
+                          {preset.label}
+                        </button>
+                      )
+                    })}
                   </div>
                   <div className="regions">
                     {regions.map(region => <label key={region.codigo} className="check-row"><input type="checkbox" checked={selected.includes(region.codigo)} onChange={() => toggle(region.codigo)} />{region.nombre}</label>)}
@@ -357,12 +493,81 @@ function App() {
                   </div>
                 ) : pendingOfficial ? <p className="empty">Aún no hay publicaciones oficiales disponibles. La demostración sintética se activa desde los filtros.</p> : !chosen.length ? <p className="empty">Selecciona al menos una región para comparar.</p> : (
                   <>
+                    <section className="kpi-strip" aria-label="Resumen del corte activo">
+                      <div className="kpi-card kpi-card-accent">
+                        <span className="kpi-label">{chosen.length === 1 ? `Región seleccionada (${last})` : `Líder regional (${last})`}</span>
+                        <strong className="kpi-value" title={leader?.row ? display(leader.row) : undefined}>
+                          {formatKpiValue(leader?.row)}
+                        </strong>
+                        <span className="kpi-meta">
+                          {leader
+                            ? `${leader.territory.nombre}${tiedLeaders.length > 1 ? ` (+${tiedLeaders.length - 1} empate)` : ''}${leader.row?.estado === 'preliminar' ? ' · Preliminar' : ''}`
+                            : comparableRanking ? 'Sin dato informado' : 'Unidades o referencias distintas'}
+                        </span>
+                      </div>
+
+                      <div className="kpi-card">
+                        {metric.metric === 'participacion' ? (
+                          <>
+                            <span className="kpi-label">Suma seleccionada ({last})</span>
+                            <strong className="kpi-value">
+                              {participationSum !== null ? `${number.format(participationSum)}%` : '—'}
+                            </strong>
+                            <span className="kpi-meta">
+                              {regionalValues.length > 0
+                                ? `Peso de ${regionalValues.length} ${regionalValues.length === 1 ? 'región' : 'regiones'} en Chile`
+                                : 'Sin dato comparable'}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="kpi-label">Referencia Chile ({last})</span>
+                            <strong className="kpi-value" title={chileRowAtEnd ? display(chileRowAtEnd) : undefined}>
+                              {formatKpiValue(chileRowAtEnd)}
+                            </strong>
+                            <span className="kpi-meta">
+                              {chileRowAtEnd?.valor != null
+                                ? `${derived ? `Base ${start}` : 'Total nacional'}${chileRowAtEnd.estado === 'preliminar' ? ' · Preliminar' : ''}`
+                                : chileRowAtEnd ? status[chileRowAtEnd.estado] : 'Sin dato nacional'}
+                            </span>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="kpi-card">
+                        <span className="kpi-label">Cobertura y período</span>
+                        <strong className="kpi-value">
+                          {releaseCoverage && releaseCoverage.esperadas > 0
+                            ? `${number.format(releaseCoverage.disponibles)} / ${number.format(releaseCoverage.esperadas)}`
+                            : `${number.format(selectedWithValue)} / ${number.format(tableRows.length)}`}
+                        </strong>
+                        <span className="kpi-meta">
+                          {releaseCoverage && releaseCoverage.esperadas > 0
+                            ? `${number.format((releaseCoverage.disponibles / releaseCoverage.esperadas) * 100)}% del corte · ${start === last ? start : `${start}–${last}`}`
+                            : `Observaciones con valor · ${start === last ? start : `${start}–${last}`}`}
+                        </span>
+                      </div>
+
+                      <div className="kpi-card">
+                        <span className="kpi-label">Estado del corte</span>
+                        <div className="kpi-value-row">
+                          <span className={`status-badge ${isDemo ? 'is-demo' : 'is-official'}`}>
+                            {isDemo ? 'Prueba' : 'Oficial'}
+                          </span>
+                        </div>
+                        <span className="kpi-meta">
+                          {chosenPublication ? `Extracción ${chosenPublication.fecha.slice(0, 10)}` : 'Corte local'}
+                          {active?.publication ? ` · ${active.publication}` : ''}
+                        </span>
+                      </div>
+                    </section>
+
                     <div className="view-switch" role="group" aria-label="Visualización">
                       <button aria-pressed={view === 'chart'} onClick={() => setView('chart')}>Serie histórica</button>
                       <button aria-pressed={view === 'ranking'} onClick={() => setView('ranking')}>Ranking {last}</button>
                       <button aria-pressed={view === 'table'} onClick={() => setView('table')}>Tabla y procedencia</button>
                     </div>
-                    {view === 'chart' ? <History series={series} years={years} label={metric.label} /> : view === 'ranking' ? (
+                    {view === 'chart' ? <History series={series} years={years} label={metric.label} unit={unit} /> : view === 'ranking' ? (
                       comparableRanking ? <ul className="chart" aria-label={`${metric.label} por región en ${last}`}>
                         {rows.map(({ territory, row }) => {
                           const value = Number(row?.valor ?? 0)

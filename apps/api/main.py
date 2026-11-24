@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from . import demo
+from .lote_oficial import LoteOficial
 
 PREFIJO = "/api/v1"
 ID = r"^[A-Za-z0-9][A-Za-z0-9._-]*$"
@@ -21,8 +22,9 @@ CAMPOS = ("id", "territorio", "anio", "metrica", "valoracion", "valor", "unidad"
 
 
 class Repositorio:
-    def __init__(self, demo_activa):
-        self.demo = demo_activa
+    def __init__(self, demo_activa=False, lote_oficial=None):
+        self.demo = bool(demo_activa)
+        self.lote = None if self.demo or lote_oficial is None else LoteOficial.desde_archivo(lote_oficial)
 
     @staticmethod
     def consulta(sql, valores=()):
@@ -41,11 +43,15 @@ class Repositorio:
     def territorios(self):
         if self.demo:
             return demo.territorios()
+        if self.lote is not None:
+            return self.lote.territorios()
         return self.consulta("SELECT * FROM pib.api_territorio ORDER BY codigo")
 
     def publicaciones(self):
         if self.demo:
             return [demo.PUBLICACION]
+        if self.lote is not None:
+            return self.lote.publicaciones()
         return self.consulta(
             "SELECT * FROM pib.api_publicacion WHERE estado = 'aprobada' ORDER BY fecha DESC, id DESC"
         )
@@ -57,6 +63,8 @@ class Repositorio:
                  and row["metrica"] == metric and row["valoracion"] == valuation),
                 key=lambda row: (row["anio"], row["territorio"]),
             )
+        if self.lote is not None:
+            return self.lote.observaciones(cut, codes, start, end, metric, valuation)
         rows = self.consulta(
             """SELECT o.* FROM pib.api_observacion o
                JOIN pib.api_publicacion p ON p.id = o.publicacion AND p.estado = 'aprobada'
@@ -69,6 +77,8 @@ class Repositorio:
     def procedencia(self, key):
         if self.demo:
             return demo.FUENTES.get(key)
+        if self.lote is not None:
+            return self.lote.procedencia(key)
         rows = self.consulta(
             """SELECT x.* FROM pib.api_procedencia x
                JOIN pib.api_publicacion p ON p.id = x.publicacion AND p.estado = 'aprobada'
@@ -77,9 +87,11 @@ class Repositorio:
         return next(iter(rows), None)
 
 
-def crear_app(demo_activa=False):
+def crear_app(demo_activa=False, lote_oficial=None):
+    if not demo_activa and lote_oficial is None and not os.getenv("DATABASE_URL"):
+        lote_oficial = (os.getenv("CT_LOTE_OFICIAL") or "").strip() or None
     app = FastAPI(title="Chile Territorial · PIB")
-    repo = Repositorio(demo_activa)
+    repo = Repositorio(demo_activa=demo_activa, lote_oficial=lote_oficial)
     contrato = Path(__file__).resolve().parents[2] / "contracts/openapi.json"
     app.openapi = lambda: json.loads(contrato.read_text(encoding="utf-8"))
 

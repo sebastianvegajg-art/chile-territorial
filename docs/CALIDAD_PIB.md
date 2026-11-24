@@ -1,6 +1,6 @@
 # Calidad y cobertura del PIB oficial
 
-Auditoría independiente del 24 de noviembre de 2026. Se verificó el corte local `bcch-bde-publico-2026-11-24-8495c73d852708e5`, extraído a las 19:15:08 de Punta Arenas (UTC−03:00). El alcance cubre PIB anual total de Chile y las 16 regiones entre 2013 y 2025. [Cuadro real BDE](https://si3.bcentral.cl/Siete/ES/Siete/Cuadro/CAP_CCNN/MN_CCNN76/CCNN2018_PIB_REGIONAL), [cuadro nominal BDE](https://si3.bcentral.cl/Siete/ES/Siete/Cuadro/CAP_CCNN/MN_CCNN76/CCNN2018_PIB_REGIONAL_N/637899740344107786).
+Auditoría independiente actualizada el 24 de noviembre de 2026 (ejecución de contraste en vivo sobre el corte local `bcch-bde-publico-2026-11-24-e8fd733c80631c45`, y consistente con el corte previo `bcch-bde-publico-2026-11-24-8495c73d852708e5`). El alcance cubre PIB anual total de Chile y las 16 regiones entre 2013 y 2025. [Cuadro real BDE](https://si3.bcentral.cl/Siete/ES/Siete/Cuadro/CAP_CCNN/MN_CCNN76/CCNN2018_PIB_REGIONAL), [cuadro nominal BDE](https://si3.bcentral.cl/Siete/ES/Siete/Cuadro/CAP_CCNN/MN_CCNN76/CCNN2018_PIB_REGIONAL_N/637899740344107786).
 
 | Serie o indicador | Ámbito | Filas | Con valor | Faltantes |
 |---|---|---:|---:|---:|
@@ -23,8 +23,9 @@ Los 17 faltantes corresponden al crecimiento de 2013. El cuadro comparado empiez
 ## Persistencia, aplicación y descarga
 
 - La carga PostgreSQL fue repetible. La suite de persistencia comprobó migración y carga idempotentes, reversión de lote inválido, permisos del lector y rechazo de datos sintéticos en la base de cortes aprobados.
-- Las 871 filas entregadas por la API oficial y el CSV coincidieron exactamente con el lote, incluidos los 17 valores nulos. Se verificaron cabeceras de corte, paginación, orden y una muestra de procedencia para Aysén en 2013 y 2025 de cada indicador.
-- La base previa superó 20 pruebas unitarias, seis controles HTTP sintéticos y el flujo histórico de Chromium para demostrar el aislamiento del modo de prueba. La compilación TypeScript y Vite pasó con el lockfile existente y una caché npm escribible.
+- En la auditoría del corte `bcch-bde-publico-2026-11-24-e8fd733c80631c45`, el cargador validó el contrato JSON Schema y las huellas SHA-256 de ambos HTML originales (`Contrato y huellas validados`), y el modo de lectura local validado (`CT_LOTE_OFICIAL`) entregó las 871 filas (221 reales, 221 nominales, 221 crecimientos con 17 nulos explícitos de 2013 y 208 participaciones) con coincidencia exacta entre lote, API JSON, descarga CSV y procedencia.
+- El paquete autónomo `data/published/Chile_Territorial_Oficial.html` (953.871 bytes) fue regenerado contra la API oficial en vivo incluyendo los 17 territorios, la publicación aprobada (con cobertura y notas de versión), las 871 observaciones y sus 871 registros de procedencia, sin datos sintéticos.
+- La suite automatizada completa superó 87 pruebas activas (`20` economía territorial, `26` Banco Central con conector API `bde_api.py` preparado para credenciales `.env`, `13` finanzas públicas, `6` inversión, `16` API/cargador y `6` auditoría HTTP caja negra Q01), además de la compilación `tsc && vite build`. Las 2 pruebas de PostgreSQL (`test_publicacion_postgres.py`) permanecen activables al configurar una instancia local con `DATABASE_URL`.
 - Playwright y Chromium locales verificaron la app y el HTML autónomo en contexto sin conexión. En ambos casos se comprobaron las 17 series comparadas, 221 niveles en CSV, 136 índices recalculados con base 2018, ranking, procedencia, vista de 360 px y manejo del foco con teclado. El navegador compartido de la conversación no estuvo disponible. La evaluación con lectores de pantalla asistivos queda pendiente.
 
 ## Reproducción

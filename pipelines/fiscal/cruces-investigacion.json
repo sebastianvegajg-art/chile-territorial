@@ -1,0 +1,439 @@
+{
+  "version": "0.1.0",
+  "fecha_revision": "2026-11-24",
+  "territorio_piloto": {
+    "region_codigo": "11",
+    "region_nombre": "Aysén del General Carlos Ibáñez del Campo",
+    "comunas_cut": [
+      "11101",
+      "11102",
+      "11201",
+      "11202",
+      "11203",
+      "11301",
+      "11302",
+      "11303",
+      "11401",
+      "11402"
+    ]
+  },
+  "referencias_metodologicas": [
+    "docs/MASTER_PLAN.md",
+    "docs/DATA_SOURCES.md",
+    "docs/METHODOLOGY.md",
+    "docs/TASK_BACKLOG.md",
+    "pipelines/fiscal/README.md"
+  ],
+  "etapas_contables_canonicas": [
+    "inicial",
+    "vigente",
+    "compromiso",
+    "devengo",
+    "pago"
+  ],
+  "billeteras_canonicas": [
+    "sectorial",
+    "regional",
+    "municipal"
+  ],
+  "coberturas_territoriales_canonicas": [
+    "localizado",
+    "multirregional",
+    "sin_asignacion"
+  ],
+  "cruces": [
+    {
+      "id": "gasto_publico_pib",
+      "nombre": "Gasto público consolidado respecto del PIB regional",
+      "pregunta_investigacion": "¿Qué magnitud relativa representa el gasto público devengado consolidado y localizado en un territorio respecto del PIB nominal regional del mismo ejercicio y corte?",
+      "formula": "100 * gasto_publico_devengado_consolidado_localizado / pib_regional_nominal_anual",
+      "numerador": {
+        "concepto": "Gasto público anual devengado consolidado y localizado en el territorio de análisis",
+        "etapa_contable": "devengo",
+        "unidad": "CLP corrientes (equivalente a moneda del denominador en el mismo ejercicio)",
+        "desglose_obligatorio": [
+          "totales_brutos_por_billetera",
+          "transferencias_internas_eliminadas",
+          "consolidado_neto_localizado",
+          "monto_multirregional",
+          "monto_sin_asignacion",
+          "residuales_pendientes_conciliacion"
+        ]
+      },
+      "denominador": {
+        "concepto": "PIB regional nominal anual oficial publicado para el mismo ejercicio y corte",
+        "unidad": "CLP corrientes (misma escala monetaria que el numerador)",
+        "fuente_base": "BCCh (Base de Datos Estadísticos - BDE)",
+        "regla_faltante": "Denominador cero, faltante, de distinta valoración (real vs nominal) o distinto ejercicio produce resultado faltante con causa explícita"
+      },
+      "fuentes_oficiales": [
+        {
+          "organismo": "DIPRES",
+          "recurso": "Informes de ejecución presupuestaria Gobierno Central y GORE",
+          "rol": "Gasto sectorial y regional; control agregado de ejecución"
+        },
+        {
+          "organismo": "Presupuesto Abierto",
+          "recurso": "Descargas mensualizadas de ejecución por servicio tras cierre contable",
+          "rol": "Detalle por servicio, documento de devengo y contraste con DIPRES"
+        },
+        {
+          "organismo": "SUBDERE",
+          "recurso": "Informes de ejecución FNDR y coordinación financiera territorial",
+          "rol": "Contraste documental de ejecución GORE/FNDR y traspasos territoriales"
+        },
+        {
+          "organismo": "SINIM",
+          "recurso": "Balances de Ejecución Presupuestaria (BEP) y fichas comunales por CUT",
+          "rol": "Gasto total devengado de municipalidades"
+        },
+        {
+          "organismo": "BCCh",
+          "recurso": "BDE Cuentas Nacionales - PIB regional nominal anual (p. ej. F035.PIB.FLU.N.CLP.2018.Z.Z.Z.11.0.A)",
+          "rol": "Denominador macroeconómico nominal comparable"
+        }
+      ],
+      "llaves_union": [
+        "codigo_territorio_dpa_cut",
+        "ejercicio_fiscal",
+        "corte_contable",
+        "moneda_y_escala",
+        "partida_capitulo_programa_asignacion",
+        "id_documento_transferencia"
+      ],
+      "perimetro": {
+        "billeteras": [
+          "sectorial",
+          "regional",
+          "municipal"
+        ],
+        "criterio_geografico": "Geografía de ejecución o de beneficiario según naturaleza de la prestación; no asumir domicilio de sede administrativa como lugar de ejecución",
+        "coberturas_conservadas": [
+          "localizado",
+          "multirregional",
+          "sin_asignacion"
+        ],
+        "excluye_del_numerador_localizado": [
+          "partidas_nacionales_no_regionalizables",
+          "partidas_multirregionales_sin_reparto_verificado",
+          "montos_sin_asignacion_territorial"
+        ]
+      },
+      "etapas_contables_validas": [
+        "devengo"
+      ],
+      "etapas_excluidas_de_suma": [
+        "inicial",
+        "vigente",
+        "compromiso",
+        "pago"
+      ],
+      "reglas_anti_doble_contabilizacion": [
+        "Mantener tres vistas brutas separadas por billetera (sectorial, regional, municipal) y una vista consolidada neta independiente",
+        "Eliminar transferencias internas (Partida 31, aportes del Tesoro, subtítulos 24 y 33, Fondo Común Municipal) únicamente cuando exista conciliación explícita por identificador documental, financiador, receptor, etapa y corte",
+        "Prohibir la conciliación o fusión automática basada únicamente en coincidencia de monto y fecha",
+        "Conservar cualquier transferencia con contraparte ausente o parcial en residuales pendientes sin eliminarla del consolidado",
+        "No sumar informes de SUBDERE construidos sobre datos de DIPRES con la fuente primaria de DIPRES",
+        "Garantizar conservación aritmética exacta: suma(brutos) - transferencias_eliminadas == consolidado_neto"
+      ],
+      "brechas_cobertura_vigentes": [
+        "Cobertura territorial incompleta del gasto corriente sectorial (remuneraciones, salud, educación, seguridad y prestaciones nacionales)",
+        "Contrapartes documentales de traspasos inter-billetera pendientes de inventario exhaustivo en Aysén",
+        "Balances de Ejecución Presupuestaria (BEP) municipales 2026 con captura documentada pero sin acceso público consolidado por comuna y corte",
+        "Ejercicios 2027 y 2028 corresponden a tramitación presupuestaria y proyecciones IFP sin ejecución observada"
+      ],
+      "criterio_no_atribucion_causal": "El cociente gasto público devengado consolidado / PIB nominal es una magnitud descriptiva de intensidad y escala fiscal. No mide por sí solo dependencia económica, multiplicador fiscal ni efecto causal del gasto sobre el crecimiento; cualquier atribución causal requiere estrategia de identificación, contrafactual, supuestos explícitos y análisis de sensibilidad."
+    },
+    {
+      "id": "inversion_publica_pib",
+      "nombre": "Inversión pública devengada respecto del PIB regional",
+      "pregunta_investigacion": "¿Qué proporción del PIB regional nominal representa la inversión pública anual devengada consolidada y territorializada, y qué parte del total de inversión permanece multirregional o sin asignación territorial?",
+      "formula": "100 * inversion_publica_anual_devengada_consolidada_localizada / pib_regional_nominal_anual",
+      "numerador": {
+        "concepto": "Inversión pública anual devengada consolidada y territorializada (Subtítulo 31 y otras partidas de capital aceptadas en el perímetro)",
+        "etapa_contable": "devengo",
+        "unidad": "CLP corrientes (equivalente a moneda del denominador en el mismo ejercicio)",
+        "desglose_obligatorio": [
+          "inversion_bruta_por_billetera",
+          "transferencias_capital_eliminadas",
+          "inversion_devengada_localizada",
+          "inversion_multirregional",
+          "inversion_sin_asignacion",
+          "porcentaje_no_asignado"
+        ]
+      },
+      "denominador": {
+        "concepto": "PIB regional nominal anual oficial publicado para el mismo ejercicio y corte",
+        "unidad": "CLP corrientes (misma escala monetaria que el numerador)",
+        "fuente_base": "BCCh (Base de Datos Estadísticos - BDE)",
+        "regla_faltante": "Denominador cero, faltante, de distinta valoración o período incomparable produce valor faltante con causa explícita"
+      },
+      "fuentes_oficiales": [
+        {
+          "organismo": "DIPRES",
+          "recurso": "Informes SIAP de iniciativas de inversión del Subtítulo 31 y ejecución GORE",
+          "rol": "Ejecución presupuestaria devengada e identificada por iniciativa y región"
+        },
+        {
+          "organismo": "BIP",
+          "recurso": "Banco Integrado de Proyectos / Sistema Nacional de Inversiones (SNI - datos abiertos CSV/RData)",
+          "rol": "Identidad canónica de iniciativas (código BIP/IDI), etapa de evaluación y localización"
+        },
+        {
+          "organismo": "ChileIndica",
+          "recurso": "Instrumentos ARI y PROPIR administrados junto a SUBDERE y GORE",
+          "rol": "Etapa de planificación y programación regional; contraste de cartera sin sumar con devengo"
+        },
+        {
+          "organismo": "SUBDERE",
+          "recurso": "Informes de inversión FNDR y documentación PROPIR",
+          "rol": "Seguimiento regional de financiamiento FNDR y contraste con DIPRES"
+        },
+        {
+          "organismo": "MOP",
+          "recurso": "Visor y servicio geográfico de Contratos de Obras del MOP",
+          "rol": "Enlace por código BIP a contratos sectoriales de obra y seguimiento físico-contractual"
+        },
+        {
+          "organismo": "Mercado Público",
+          "recurso": "Descargas OCDS, licitaciones y órdenes de compra de ChileCompra",
+          "rol": "Evidencia contractual y de adjudicación vinculable a ejecución sin sustituir el asiento de devengo"
+        },
+        {
+          "organismo": "SINIM",
+          "recurso": "Balances de Ejecución Presupuestaria (BEP) municipales - cuentas de inversión real",
+          "rol": "Inversión municipal ejecutada por CUT"
+        },
+        {
+          "organismo": "BCCh",
+          "recurso": "BDE Cuentas Nacionales - PIB regional nominal anual",
+          "rol": "Denominador macroeconómico nominal comparable"
+        }
+      ],
+      "llaves_union": [
+        "codigo_bip_idi",
+        "codigo_territorio_dpa_cut",
+        "ejercicio_fiscal",
+        "corte_contable",
+        "partida_capitulo_programa_subtitulo_31",
+        "id_contrato_mop",
+        "id_licitacion_orden_compra_ocds",
+        "id_documento_transferencia_capital"
+      ],
+      "perimetro": {
+        "billeteras": [
+          "sectorial",
+          "regional",
+          "municipal"
+        ],
+        "partidas_objetivo": [
+          "Subtítulo 31 Iniciativas de Inversión",
+          "Otras partidas de inversión real explícitamente documentadas en el perímetro"
+        ],
+        "criterio_geografico": "Territorio de localización de la obra o iniciativa; proyectos multicomunales o multirregionales se registran en su categoría correspondiente sin prorrateo arbitrario",
+        "coberturas_conservadas": [
+          "localizado",
+          "multirregional",
+          "sin_asignacion"
+        ]
+      },
+      "etapas_contables_validas": [
+        "devengo"
+      ],
+      "etapas_excluidas_de_suma": [
+        "inicial",
+        "vigente",
+        "compromiso",
+        "pago"
+      ],
+      "reglas_anti_doble_contabilizacion": [
+        "Separar estrictamente planificación (ARI), programación (PROPIR), evaluación ex-ante (BIP), contratación/adjudicación (MOP y Mercado Público) y ejecución devengada (DIPRES/GORE/SINIM); jamás sumar montos entre etapas distintas",
+        "Eliminar transferencias de capital inter-billetera (p. ej. Subtítulo 33 desde sectorial o GORE hacia municipios) únicamente cuando exista conciliación documental con el devengo final de la obra",
+        "Evitar duplicar registros entre informes DIPRES y reportes derivados de SUBDERE FNDR",
+        "Conservar por separado ID de iniciativa BIP e ID de contrato MOP/orden de compra, evitando sumar montos plurianuales de contrato con devengos anuales",
+        "No sumar acumulados entre distintos cortes mensuales ni mezclar montos identificados con montos devengados"
+      ],
+      "brechas_cobertura_vigentes": [
+        "Verificación pendiente de base contable exacta cuando un informe SIAP reporta únicamente etiqueta 'ejecutado' sin separar devengo y pago",
+        "Descargas reproducibles de ARI y PROPIR de ChileIndica para Aysén 2025-2026 con metadatos de corte aún pendientes",
+        "Cobertura parcial de inversión sectorial fuera del Subtítulo 31 y de proyectos multiterritoriales",
+        "Enlace exhaustivo pendiente entre código BIP, contratos MOP, órdenes de Mercado Público y asientos de devengo"
+      ],
+      "criterio_no_atribucion_causal": "La razón inversión pública devengada / PIB describe escala relativa de formación de capital público respecto de la actividad económica regional. La asociación temporal entre inversión y crecimiento admite múltiples explicaciones (rezagos, ciclo económico, shocks sectoriales) y no demuestra causalidad sin un diseño de evaluación causal con contrafactual y sensibilidad."
+    },
+    {
+      "id": "programas_beneficiarios_cobertura",
+      "nombre": "Asignación y ejecución de programas respecto de beneficiarios únicos y cobertura",
+      "pregunta_investigacion": "¿Qué cobertura sobre la población elegible y qué intensidad de gasto devengado por beneficiario único alcanzan los programas públicos en una cohorte, ventana y territorio comparables?",
+      "formula": "cobertura = 100 * beneficiarios_unicos / poblacion_elegible; intensidad = gasto_devengado_atribuible / beneficiarios_unicos_atendidos",
+      "numerador": {
+        "concepto": "Beneficiarios únicos deduplicados (para cobertura) y gasto público devengado atribuible al programa (para intensidad)",
+        "etapa_contable": "devengo",
+        "unidad": "Personas o unidades beneficiarias únicas (cobertura); CLP corrientes por beneficiario único (intensidad)",
+        "condiciones": "Misma cohorte, ventana temporal, definición de prestación y regla explícita de deduplicación"
+      },
+      "denominador": {
+        "concepto": "Población elegible oficial en el territorio y período (para cobertura) y beneficiarios únicos atendidos (para intensidad)",
+        "unidad": "Personas o unidades elegibles/atendidas según diseño del programa",
+        "regla_faltante": "Denominador cero, faltante, sin representatividad estadística en el dominio territorial o con criterio de elegibilidad incompatible produce valor faltante con causa explícita"
+      },
+      "fuentes_oficiales": [
+        {
+          "organismo": "DIPRES",
+          "recurso": "Presupuesto inicial, vigente y ejecución devengada por programa y asignación, y evaluaciones de programas públicos",
+          "rol": "Asignación y ejecución financiera atribuible al programa"
+        },
+        {
+          "organismo": "Presupuesto Abierto",
+          "recurso": "Ejecución mensual por servicio y programa",
+          "rol": "Seguimiento de devengo y contraste temporal por programa"
+        },
+        {
+          "organismo": "SINIM",
+          "recurso": "Indicadores y balances municipales de servicios y prestaciones locales",
+          "rol": "Ejecución y cobertura de programas de administración municipal"
+        },
+        {
+          "organismo": "SUBDERE",
+          "recurso": "Programas de financiamiento territorial y gestión municipal/regional",
+          "rol": "Identificación de programas transferidos y cobertura institucional"
+        },
+        {
+          "organismo": "INE / MDSF (CASEN y registros administrativos)",
+          "recurso": "Censo, proyecciones poblacionales, ENE/ESI y CASEN (con estimación oficial de áreas pequeñas cuando aplique)",
+          "rol": "Denominador de población elegible bajo dominios estadísticos representativos"
+        }
+      ],
+      "llaves_union": [
+        "id_programa_presupuestario_dipres",
+        "codigo_territorio_dpa_cut",
+        "cohorte_y_ventana_temporal",
+        "version_regla_elegibilidad",
+        "tipo_prestacion"
+      ],
+      "perimetro": {
+        "billeteras": [
+          "sectorial",
+          "regional",
+          "municipal"
+        ],
+        "criterio_geografico": "Territorio de residencia o atención del beneficiario según diseño del programa, declarado explícitamente",
+        "coberturas_conservadas": [
+          "localizado",
+          "multirregional",
+          "sin_asignacion"
+        ],
+        "separacion_analitica": "Distinguir estrictamente insumos financieros, productos entregados (prestaciones/cobertura) y resultados de bienestar"
+      },
+      "etapas_contables_validas": [
+        "devengo"
+      ],
+      "etapas_excluidas_de_suma": [
+        "inicial",
+        "vigente",
+        "compromiso",
+        "pago"
+      ],
+      "reglas_anti_doble_contabilizacion": [
+        "Deduplicar beneficiarios a nivel de persona/hogar único antes de calcular cobertura e intensidad, distinguiendo prestaciones múltiples de beneficiarios únicos",
+        "Eliminar transferencias internas entre organismo financiador y organismo ejecutor del programa antes de computar el gasto devengado atribuible",
+        "No sumar asignaciones iniciales o vigentes con gasto devengado; informar asignación y devengo como métricas separadas",
+        "Aplicar minimización de datos personales trabajando con registros agregados y reglas de deduplicación auditables"
+      ],
+      "brechas_cobertura_vigentes": [
+        "Falta de identificadores interoperables homogéneos entre programas presupuestarios DIPRES y padrones de prestaciones territoriales",
+        "Disponibilidad parcial de padrones agregados deduplicados con desagregación comunal verificable",
+        "Limitaciones de representatividad comunal en encuestas muestrales (ENE/ESI/CASEN) que exigen restringirse a dominios oficiales o estimaciones SAE publicadas",
+        "Definición pendiente de cohortes y ventanas estándar en tarea G01"
+      ],
+      "criterio_no_atribucion_causal": "Las tasas de cobertura y el gasto devengado por beneficiario describen alcance e intensidad de entrega de prestaciones. No permiten atribuir por sí solas impactos causales en bienestar, pobreza o empleabilidad sin un diseño de evaluación contrafactual, control de autoselección y verificación de supuestos."
+    },
+    {
+      "id": "costo_administrativo_eficiencia",
+      "nombre": "Costo administrativo respecto de inversión ejecutada o unidades de servicio",
+      "pregunta_investigacion": "¿Cuál es la relación entre el costo administrativo atribuible y la inversión pública devengada o las unidades de servicio entregadas, en condiciones comparables de alcance institucional, plazos y calidad?",
+      "formula": "costo_administrativo_atribuible / inversion_ejecutada_o_unidades_de_servicio",
+      "numerador": {
+        "concepto": "Costo administrativo directo y porción repartida de costos compartidos en moneda comparable",
+        "etapa_contable": "devengo",
+        "unidad": "CLP corrientes o reales con deflactor documentado según horizonte de comparación",
+        "condiciones": "Base de reparto de costos compartidos explícita, reproducible y auditable por institución y programa"
+      },
+      "denominador": {
+        "concepto": "Inversión pública devengada ejecutada o cantidad homogénea de unidades de servicio entregadas en el mismo período y perímetro",
+        "unidad": "CLP comparables (para razón sobre inversión) o unidades físicas homogéneas de servicio",
+        "regla_faltante": "Denominador cero, faltante o unidades heterogéneas sin equivalencia metodológica producen valor faltante con causa explícita"
+      },
+      "fuentes_oficiales": [
+        {
+          "organismo": "DIPRES",
+          "recurso": "Ejecución presupuestaria de programas de funcionamiento (p. ej. Programa 01 GORE) y programas de inversión/prestación",
+          "rol": "Desglose de gasto corriente administrativo y gasto ejecutado por capítulo y programa"
+        },
+        {
+          "organismo": "SINIM",
+          "recurso": "Balances BEP municipales e indicadores de gestión y dotación municipal",
+          "rol": "Costos de gestión municipal y servicios incorporados bajo reglas NICSP"
+        },
+        {
+          "organismo": "SUBDERE",
+          "recurso": "Reportes de gestión regional y municipal (SIM / informes FNDR)",
+          "rol": "Contexto institucional de administración territorial y programas ejecutados"
+        },
+        {
+          "organismo": "Mercado Público",
+          "recurso": "Registros OCDS de licitaciones y órdenes de compra de bienes y servicios de soporte administrativo y operación",
+          "rol": "Trazabilidad contractual de gastos de operación y plazos de contratación"
+        },
+        {
+          "organismo": "MOP",
+          "recurso": "Registros de contratos de obras y seguimiento físico-temporal",
+          "rol": "Contraste de plazos, modificaciones y entrega física en cartera de inversión sectorial"
+        }
+      ],
+      "llaves_union": [
+        "institucion_ejecutora_codigo",
+        "programa_funcionamiento_vs_inversion",
+        "ejercicio_fiscal",
+        "corte_contable",
+        "unidad_servicio_estandar",
+        "regla_reparto_costos_compartidos"
+      ],
+      "perimetro": {
+        "billeteras": [
+          "sectorial",
+          "regional",
+          "municipal"
+        ],
+        "criterio_comparabilidad": "Comparar únicamente períodos, alcances institucionales, competencias y composiciones de servicio equivalentes, en moneda comparable y acompañados de indicadores de calidad, plazos y resultados",
+        "coberturas_conservadas": [
+          "localizado",
+          "multirregional",
+          "sin_asignacion"
+        ]
+      },
+      "etapas_contables_validas": [
+        "devengo"
+      ],
+      "etapas_excluidas_de_suma": [
+        "inicial",
+        "vigente",
+        "compromiso",
+        "pago"
+      ],
+      "reglas_anti_doble_contabilizacion": [
+        "Separar explícitamente costos administrativos directos de costos compartidos y verificar que las cuotas repartidas sumen exactamente el 100% del costo compartido del perímetro sin excederlo",
+        "Evitar incluir en el numerador partidas de inversión o transferencias a beneficiarios que pertenecen al denominador",
+        "Eliminar transferencias internas de operación entre organismos antes de consolidar costos administrativos interinstitucionales",
+        "No mezclar órdenes de compra o presupuestos vigentes con gasto devengado en el cálculo de la razón"
+      ],
+      "brechas_cobertura_vigentes": [
+        "Ausencia de una base homogénea aprobada de reparto de costos compartidos entre programas administrativos y de inversión (dependencia de G01)",
+        "Heterogeneidad en unidades de servicio y ausencia de indicadores estandarizados de calidad y oportunidad por organismo",
+        "Cambios de clasificación contable y adopción NICSP en servicios incorporados municipales que afectan comparabilidad interanual",
+        "Distinción pendiente entre complejidad geográfica de zonas extremas (como Aysén) e ineficiencia operativa"
+      ],
+      "criterio_no_atribucion_causal": "Un menor o mayor cociente de costo administrativo es un indicador descriptivo y no permite atribución causal directa sobre eficiencia o desempeño de gestión. Diferencias geográficas, dispersión territorial, escala, composición de servicios y calidad de entrega explican variaciones legítimas; toda conclusión causal o evaluativa requiere contraste de plazos, calidad, resultados, diseño comparativo y comparabilidad institucional verificada."
+    }
+  ]
+}

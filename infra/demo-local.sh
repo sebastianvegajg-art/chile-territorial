@@ -5,7 +5,10 @@ mode=${1:-demo}
 case "$mode" in
   demo) label='Comparador de prueba' ;;
   oficial)
-    : "${DATABASE_URL:?Configura DATABASE_URL para el lector PostgreSQL}"
+    if [[ -z "${DATABASE_URL:-}" && -z "${CT_LOTE_OFICIAL:-}" ]]; then
+      printf '%s\n' 'Configura DATABASE_URL (PostgreSQL) o CT_LOTE_OFICIAL (lote oficial validado)' >&2
+      exit 2
+    fi
     label='Comparador con datos oficiales'
     ;;
   *) printf '%s\n' 'Uso: infra/demo-local.sh [demo|oficial]' >&2; exit 2 ;;

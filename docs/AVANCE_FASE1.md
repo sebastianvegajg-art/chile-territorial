@@ -1,6 +1,44 @@
 # Avance de la primera fase
 
-## Reactivación del 24 de noviembre de 2026
+## Consolidación multiagente (24 de noviembre de 2026)
+
+Se recuperó el repositorio completo desde GitHub (`sebastianvegajg-art/chile-territorial`), auditando las 12 ramas remotas y los PR #1 a #10. Se confirmó que **`fase1/integracion-oficial`** (`7104e01`) ya consolidaba PR #10 (`fase1/preview-local`), la demo `demo/preview-v0.2.0` y una primera integración de cuadros públicos BDE, pero carecía de PR integrado hacia `main`, de conector completo para la API autenticada del BCCh, de indicadores de estructura productiva, de adaptador local oficial sin Docker en Windows, de motor de conciliación fiscal y de inventario de fuentes de inversión.
+
+Sobre la misma rama común **`fase1/integracion-oficial`** se coordinó a los 7 agentes especializados en rutas disjuntas conforme a [roles](AGENT_ROLES.md):
+
+| Agente | Área y archivos | Entregables verificados | Pruebas |
+|---|---|---|---|
+| **Agente 1** · Recuperación y arquitectura | Raíz, `.env.example`, `infra/demo-local.ps1`, `infra/demo-local.sh`, `docs/AVANCE_FASE1.md` | Recuperación de 12 ramas/PRs sin duplicar trabajo, validación del corte oficial vigente, lanzador nativo Windows PowerShell (`demo-local.ps1`) y PR integrado para revisión | Flujo completo validado |
+| **Agente 2** · Banco Central | `pipelines/economia/bde_api.py`, `test_bde_api.py`, `README.md` | Extracción viva y reproducción bit-a-bit de cuadros públicos BDE 2013–2025 (`bcch-bde-publico-2026-11-24-e8fd733c80631c45`, 871 filas) + nuevo conector autenticado `bde_api.py` (`BCCH_API_TOKEN` o `BCCH_API_USER`/`BCCH_API_PASS` vía `.env`), 34 series PIB total con precisión decimal completa + inventario reproducible de 416 series sectoriales + `--reproducir` | 26/26 OK |
+| **Agente 3** · Economía territorial | `analytics/territorial/estructura.py`, `test_estructura.py`, `README.md` | Conservación de métricas PIB (`crecimiento`, `crecimiento_acumulado`, `indice_historico`, `participacion`, `ranking_regional`) + nuevos indicadores `Decimal(34)` de estructura productiva (`participacion_sectorial`), especialización (`especializacion` LQ), concentración (`concentracion_hhi` 0–10.000) e `indice_krugman` con rechazo estricto de valoración real no aditiva | 20/20 OK |
+| **Agente 4** · Desarrollo frontend | `apps/web/src/main.tsx`, `history.tsx`, `api.ts`, `styles.css` | Tarjetas KPI resumen del corte activo, atajos territoriales por macrozona (`Aysén`, `Austral`, `Norte`, `Centro-Sur`), gráfico histórico interactivo con guía vertical e inspector accesible por año, vista de `#metodologia` con cobertura y notas del corte activo, responsividad móvil 360px y exportación offline intacta | `tsc && vite build` OK (163 ms) |
+| **Agente 5** · Backend y almacenamiento | `apps/api/lote_oficial.py`, `main.py`, `test_lote_oficial.py`, `README.md` | Adaptador de lectura oficial validado contra `pib-datos.schema.json` (`CT_LOTE_OFICIAL`) que rechaza tajantemente cualquier dato `prueba`/`estimacion`/`error`, preservando PostgreSQL (`DATABASE_URL`) como almacén principal y modo `demo` aislado | 16/16 activas OK (2 Postgres omitidas sin Docker) |
+| **Agente 6** · Finanzas públicas | `pipelines/fiscal/cruces-investigacion.json`, `conciliacion.py`, `test_conciliacion.py`; `pipelines/inversion/fuentes-inversion.csv`, `README.md`, `test_inversion.py` | Especificación formal de los 4 cruces maestros, motor `Decimal` de saldos (`saldo_por_devengar`, `saldo_no_comprometido`, `tasa_ejecucion`) y consolidación bruto-a-neto de 3 billeteras sin doble contabilización + inventario estructurado de 7 fuentes oficiales de inversión (`BIP/SNI`, `ChileIndica ARI/PROPIR`, `MOP`, `Mercado Público OCDS`, `SUBDERE FNDR`, `DIPRES Subtítulo 31`) | 19/19 OK (13 fiscal + 6 inversión) |
+| **Agente 7** · Auditoría independiente | `docs/CALIDAD_PIB.md`, `tests/auditoria/contrastar_pib_oficial.py`, `test_api_pib.py` | Contraste de las 442 celdas oficiales frente a segunda descarga independiente en vivo del BCCh, verificación de 429 filas derivadas y variación 2025 vs nota anual BCCh, paridad exacta 871/871 en API + CSV + procedencia, aislamiento de modo sintético (6/6) y generación/verificación de `data/published/Chile_Territorial_Oficial.html` (953 KB) | 6/6 Q01 + auditoría oficial completa OK |
+
+**Total automatizado en esta integración**: **87 pruebas ejecutadas y aprobadas** (`20` economía territorial + `26` Banco Central + `13` fiscal + `6` inversión + `16` API/cargador + `6` auditoría caja negra Q01; `2` pruebas de integración PostgreSQL omitidas cuando no hay instancia PostgreSQL local configurada), más compilación TypeScript/Vite y auditoría en vivo contra el Banco Central.
+
+### Ejecución rápida en Windows (datos oficiales, sin Docker)
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\pip.exe install -r apps/api/requirements.txt
+npm.cmd ci --prefix apps/web
+
+# 1. Extraer corte oficial desde cuadros públicos BDE (o usar bde_api.py --env .env con credenciales API)
+.\.venv\Scripts\python.exe -m pipelines.economia.bde_publico
+
+# 2. Iniciar API oficial (solo lectura validada) + Frontend en http://127.0.0.1:5173
+.\infra\demo-local.ps1 -Modo oficial
+```
+
+Para ejecutar con tus credenciales de la API oficial del Banco Central (fuera de Git): copia `.env.example` a `.env`, completa `BCCH_API_TOKEN` (o `BCCH_API_USER` y `BCCH_API_PASS`) y ejecuta:
+
+```powershell
+.\.venv\Scripts\python.exe -m pipelines.economia.bde_api --env .env --completo
+```
+
+## Reactivación del 24 de noviembre de 2026 (base previa en esta rama)
 
 `fase1/integracion-oficial` parte del PR #10 (`b3145c3`) e incorpora el commit de `demo/preview-v0.2.0`. Se revisaron 12 ramas y los PR #1 a #10. `main` conserva la arquitectura `v0.1.0`. La rama de la demo aportaba una presentación descargable con datos sintéticos. Las referencias revisadas no contenían una carga oficial posterior.
 

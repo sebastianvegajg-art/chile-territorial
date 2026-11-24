@@ -18,6 +18,11 @@ export interface Publication {
   fecha: string
   estado: 'aprobada' | 'prueba'
   fuente: string
+  cobertura?: {
+    esperadas: number
+    disponibles: number
+  }
+  cambios?: string[]
 }
 
 export interface Observation {
