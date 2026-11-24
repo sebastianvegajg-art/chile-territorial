@@ -181,7 +181,19 @@ def _extraer_unidad_titulo(titulo: str) -> str | None:
     return None
 
 
-def _factor_a_millones(*titulos: str | None) -> tuple[Decimal, str]:
+_UNIDADES_VERIFICADAS_SIN_PARENTESIS: dict[str, tuple[Decimal, str]] = {
+    "F032.PIB.FLU.R.CLP.HIST18.Z.Z.0.A": (
+        Decimal("1000"),
+        "miles de millones de pesos encadenados (CCNN BCCh verificada)",
+    ),
+    "F032.PIB.FLU.N.CLP.HIST18.Z.Z.0.A": (
+        Decimal("1000"),
+        "miles de millones de pesos (CCNN BCCh verificada)",
+    ),
+}
+
+
+def _factor_a_millones(*titulos: str | None, codigo: str | None = None) -> tuple[Decimal, str]:
     for titulo in titulos:
         if not titulo:
             continue
@@ -190,6 +202,10 @@ def _factor_a_millones(*titulos: str | None) -> tuple[Decimal, str]:
             return Decimal("1000"), _extraer_unidad_titulo(titulo) or "miles de millones de pesos"
         if "millones de pesos" in norm:
             return Decimal("1"), _extraer_unidad_titulo(titulo) or "millones de pesos"
+        if "billions of" in norm and "peso" in norm:
+            return Decimal("1000"), _extraer_unidad_titulo(titulo) or "miles de millones de pesos"
+    if codigo and codigo in _UNIDADES_VERIFICADAS_SIN_PARENTESIS:
+        return _UNIDADES_VERIFICADAS_SIN_PARENTESIS[codigo]
     raise BdeApiError(
         "No se pudo verificar la unidad monetaria (miles de millones o millones de pesos) en los metadatos."
     )
@@ -364,6 +380,17 @@ def resolver_credenciales(
     )
 
 
+def _cargar_json_bde(body: bytes, *, parse_float=str):
+    """Decodifica respuestas JSON de la BDE aceptando UTF-8 e ISO-8859-1."""
+    for codificacion in ("utf-8-sig", "iso-8859-1"):
+        try:
+            texto = body.decode(codificacion)
+        except UnicodeDecodeError:
+            continue
+        return json.loads(texto, parse_float=parse_float)
+    raise ValueError("No se pudo decodificar el cuerpo JSON.")
+
+
 def descargar(
     credenciales: Credenciales,
     funcion: str,
@@ -396,7 +423,7 @@ def descargar(
     if len(body) > MAX_BYTES:
         raise BdeApiError(f"{funcion}: respuesta supera el tamaño permitido.")
     try:
-        payload = json.loads(body.decode("utf-8"), parse_float=str)
+        payload = _cargar_json_bde(body, parse_float=str)
     except (ValueError, UnicodeError):
         raise BdeApiError(f"{funcion}: respuesta JSON inválida.") from None
 
@@ -607,7 +634,7 @@ def construir_inventario_sectorial(
 ) -> dict:
     """Construye el manifiesto reproducible del inventario sectorial regional."""
     try:
-        payload = json.loads(catalogo_bytes.decode("utf-8"), parse_float=str)
+        payload = _cargar_json_bde(catalogo_bytes, parse_float=str)
     except (ValueError, UnicodeError):
         raise BdeApiError("Catálogo anual JSON inválido.") from None
     catalogo = parsear_catalogo_anual(payload)
@@ -781,7 +808,9 @@ def _parsear_observaciones_serie(
         raise BdeApiError(f"{serie.codigo}: observaciones vacías o inválidas.")
 
     descrip_es = bloque.get("descripEsp") if isinstance(bloque.get("descripEsp"), str) else None
-    factor, unidad_origen = _factor_a_millones(serie.titulo_es, descrip_es)
+    factor, unidad_origen = _factor_a_millones(
+        serie.titulo_es, descrip_es, serie.titulo_en, codigo=serie.codigo
+    )
 
     por_anio: dict[int, dict] = {}
     numericas = 0
@@ -859,7 +888,7 @@ def normalizar_pib_total(
         raise BdeApiError("El contrato PIB admite períodos desde 2012 en adelante (--desde >= 2012-01-01).")
 
     try:
-        payload_catalogo = json.loads(catalogo_bytes.decode("utf-8"), parse_float=str)
+        payload_catalogo = _cargar_json_bde(catalogo_bytes, parse_float=str)
     except (ValueError, UnicodeError):
         raise BdeApiError("Catálogo anual JSON inválido.") from None
     catalogo = parsear_catalogo_anual(payload_catalogo)
@@ -904,7 +933,7 @@ def normalizar_pib_total(
             serie = series_totales[(territorio, valoracion)]
             raw_serie = series_bytes[serie.codigo]
             try:
-                payload_serie = json.loads(raw_serie.decode("utf-8"), parse_float=str)
+                payload_serie = _cargar_json_bde(raw_serie, parse_float=str)
             except (ValueError, UnicodeError):
                 raise BdeApiError(f"{serie.codigo}: cuerpo JSON de GetSeries inválido.") from None
             por_anio, _factor, unidad_origen = _parsear_observaciones_serie(
@@ -1084,6 +1113,8 @@ def normalizar_pib_total(
     if cortes_detectados:
         cambios.append(f"Última fecha de actualización reportada por catálogo BDE: {max(cortes_detectados)}.")
 
+    observaciones_publicables = [fila for fila in observaciones if fila["anio"] >= 2013]
+
     return {
         "publicacion": {
             "id": publicacion_id,
@@ -1091,8 +1122,8 @@ def normalizar_pib_total(
             "estado": estado_publicacion,
             "fuente": FUENTE,
             "cobertura": {
-                "esperadas": len(observaciones),
-                "disponibles": sum(fila["valor"] is not None for fila in observaciones),
+                "esperadas": len(observaciones_publicables),
+                "disponibles": sum(fila["valor"] is not None for fila in observaciones_publicables),
             },
             "cambios": cambios,
         },

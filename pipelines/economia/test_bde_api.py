@@ -309,8 +309,10 @@ class NormalizacionPibTotalTests(unittest.TestCase):
             self.assertEqual(art["url"], bde_api.ENDPOINT)
             self.assertNotIn("?", art["url"])
 
-        # Cobertura: 17 niveles reales 2012 + (34*2 niveles + 17*2 crecimientos + 16*2 participaciones) = 151
-        self.assertEqual(lote["publicacion"]["cobertura"], {"esperadas": 151, "disponibles": 151})
+        # Cobertura publicable (anio >= 2013, conforme a 001_pib.sql): 34*2 niveles + 17*2 crecimientos + 16*2 participaciones = 134
+        # Los 17 niveles auxiliares de 2012 permanecen en observaciones/procedencias como insumo del crecimiento 2013.
+        self.assertEqual(len(lote["observaciones"]), 151)
+        self.assertEqual(lote["publicacion"]["cobertura"], {"esperadas": 134, "disponibles": 134})
 
         # Verificar precisión decimal exacta (miles de millones * 1000 -> millones CLP)
         obs_por_clave = {
@@ -331,6 +333,10 @@ class NormalizacionPibTotalTests(unittest.TestCase):
         self.assertNotIn(("CL", 2012, "nivel", "nominal"), obs_por_clave)
         self.assertNotIn(("CL", 2012, "crecimiento", "real"), obs_por_clave)
         self.assertNotIn(("11", 2012, "participacion", "nominal"), obs_por_clave)
+
+        # Verificar compatibilidad estricta con el cargador oficial de la API
+        from apps.api.lote_oficial import validar_lote_oficial
+        validar_lote_oficial(lote)
 
         # Procedencia de crecimiento 2013 referencia ambos niveles (2013 y 2012)
         proc_por_obs = {p["observacion"]: p for p in lote["procedencias"]}

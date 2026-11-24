@@ -54,7 +54,11 @@ def download(token, function, **params):
     if len(body) > MAX_BYTES:
         raise VerificationError(f"{function}: respuesta supera el tamaño permitido.")
     try:
-        payload = json.loads(body)
+        try:
+            text = body.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = body.decode("iso-8859-1")
+        payload = json.loads(text)
     except (ValueError, UnicodeError):
         raise VerificationError(f"{function}: respuesta JSON inválida.") from None
     response_text = json.dumps(payload, ensure_ascii=False)
