@@ -221,3 +221,33 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Chile Territorial
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+.DS_Store
+.ipynb_checkpoints/
+attachments/
+scratch/
+shared/
+work/
+/data/raw/**
+!/data/raw/.gitkeep
+/data/quarantine/**
+!/data/quarantine/.gitkeep
+/data/published/**
+!/data/published/.gitkeep
