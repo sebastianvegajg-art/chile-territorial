@@ -16,7 +16,7 @@
 | `derived_observation` | Publicación, versión de indicador, claves dimensionales y período. Vínculos a observaciones insumo, resultado y motivo si faltante |
 | `quality_issue` | Ejecución o publicación, regla, severidad, referencia y resolución |
 
-Los períodos incluyen límites explícitos y frecuencia. Un año publicado puede cambiar en el siguiente corte. Una corrección genera una nueva versión sin alterar observaciones ya publicadas. Estados mínimos: informado, preliminar, faltante, suprimido, no aplicable y error. Solo informado y preliminar admiten valores en observaciones oficiales; estimaciones y proyecciones se almacenan con su propia clase y versión. Un fallo de ingesta no sustituye un dato oficial anterior. Chile se representa como territorio nacional y las etiquetas históricas se resuelven por vigencia.
+Los períodos incluyen límites explícitos y frecuencia. Un año publicado puede cambiar en el siguiente corte. Una corrección genera una nueva versión sin alterar observaciones ya publicadas. La clase de evidencia y el estado son campos distintos. El [contrato del MVP](../contracts/README.md) define la correspondencia y aísla lotes de prueba. Estados mínimos: informado, preliminar, faltante, suprimido, no aplicable y error. Solo informado y preliminar admiten valores en observaciones oficiales; estimaciones y proyecciones se almacenan con su propia clase y versión. Un fallo de ingesta no sustituye un dato oficial anterior. Chile se representa como territorio nacional y las etiquetas históricas se resuelven por vigencia.
 
 ## Extensión fiscal y de inversión
 

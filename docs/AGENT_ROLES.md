@@ -1,6 +1,6 @@
 # Mandatos de trabajo por agente
 
-Estos mandatos están preparados para usarse tras la aprobación de la arquitectura. Cada fila indica qué leer, dónde entregar y cómo se aceptará la entrega. Las tareas y sus dependencias se detallan en el [backlog](TASK_BACKLOG.md).
+La arquitectura está aprobada. Ejecuta estos mandatos cuando el titular autorice la activación. Cada fila indica qué leer, dónde entregar y cómo se aceptará la entrega. Las tareas y sus dependencias se detallan en el [backlog](TASK_BACKLOG.md).
 
 | Rol | Encargo y archivos propios | Insumos y criterio de aceptación |
 |---|---|---|
@@ -18,4 +18,16 @@ Estos mandatos están preparados para usarse tras la aprobación de la arquitect
 
 ## Trabajo en paralelo
 
-01 publica versiones del esquema, formatos de entrega y contrato API antes de abrir ramas de implementación. Cada rol trabaja solo en su ruta, entrega pruebas unitarias con su componente y pide cambios compartidos a 01 por escrito. 01 coordina `tests/integration/` con los roles afectados. 08 y 09 usan los mismos ejemplos sintéticos versionados y rotulados mientras se valida la ingesta. 03 y 04 pueden investigar fuentes en paralelo y acuerdan el enlace proyecto–movimiento sin compartir archivos. 07 conserva sus verificaciones en su ruta y solicita correcciones al responsable. 01 integra revisiones tras verificar compatibilidad y ejecutar las pruebas de integración.
+01 mantiene el [contrato inicial](../contracts/README.md) antes de abrir ramas de implementación. Cada rol trabaja solo en su ruta, entrega pruebas unitarias con su componente y pide cambios compartidos a 01 por escrito. 01 coordina `tests/integration/` con los roles afectados. 08 y 09 usan los mismos ejemplos sintéticos versionados y rotulados mientras se valida la ingesta. 03 y 04 pueden investigar fuentes en paralelo y acuerdan el enlace proyecto–movimiento sin compartir archivos. 07 conserva sus verificaciones en su ruta y solicita correcciones al responsable. 01 integra revisiones tras verificar compatibilidad y ejecutar las pruebas de integración.
+
+## Mandatos ejecutables y archivos compartidos
+
+| Agente | Instrucción independiente | Única ruta de escritura |
+|---|---|---|
+| 02 · Banco Central | [E01, E02 y E03](agentes/banco-central.md) | `pipelines/economia/**` |
+| 08 · Backend | [B01](agentes/backend.md) | `apps/api/**` |
+| 09 · Frontend | [W01](agentes/frontend.md) | `apps/web/**` |
+| 03 · Finanzas públicas | [F01 y F02](agentes/finanzas-publicas.md) | `pipelines/fiscal/**` |
+| 07 · Auditoría metodológica | [Q01 y Q02](agentes/auditoria-metodologica.md) | `tests/auditoria/**` |
+
+Los cinco roles leen `AGENTS.md`, `docs/**`, `contracts/**`, `db/migrations/**`, `infra/**`, `tests/integration/**` y configuración raíz. Solo 01 integra cambios en esas rutas. Las pruebas unitarias viven bajo la ruta del agente. Los artefactos reales se manejan en el entorno de datos fuera de Git. Si se necesita cambiar un archivo compartido, entregar a 01 la propuesta, los consumidores afectados y los casos de verificación.

@@ -1,0 +1,434 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "publicacion",
+    "artefactos",
+    "observaciones",
+    "procedencias"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "publicacion": {
+      "type": "object",
+      "required": [
+        "id",
+        "fecha",
+        "estado",
+        "fuente",
+        "cobertura",
+        "cambios"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "fecha": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "estado": {
+          "type": "string",
+          "enum": [
+            "aprobada",
+            "prueba"
+          ]
+        },
+        "fuente": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "cobertura": {
+          "type": "object",
+          "required": [
+            "esperadas",
+            "disponibles"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "esperadas": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "disponibles": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "cambios": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "artefactos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "fuente",
+          "url",
+          "sha256",
+          "corte",
+          "extraido_en"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "fuente": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://[^?#]+$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "corte": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "extraido_en": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "observaciones": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "territorio",
+          "anio",
+          "metrica",
+          "valoracion",
+          "valor",
+          "unidad",
+          "anio_referencia",
+          "estado",
+          "clase",
+          "publicacion"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "territorio": {
+            "type": "string",
+            "pattern": "^(CL|0[1-9]|1[0-6])$"
+          },
+          "anio": {
+            "type": "integer",
+            "minimum": 2012,
+            "maximum": 9999
+          },
+          "metrica": {
+            "type": "string",
+            "enum": [
+              "nivel",
+              "crecimiento",
+              "participacion"
+            ]
+          },
+          "valoracion": {
+            "type": "string",
+            "enum": [
+              "real",
+              "nominal"
+            ]
+          },
+          "valor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unidad": {
+            "type": "string",
+            "minLength": 1
+          },
+          "anio_referencia": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 2013,
+                "maximum": 9999
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "informado",
+              "preliminar",
+              "faltante",
+              "suprimido",
+              "no_aplicable",
+              "error"
+            ]
+          },
+          "clase": {
+            "type": "string",
+            "enum": [
+              "oficial",
+              "estimacion",
+              "prueba",
+              "no_disponible"
+            ]
+          },
+          "publicacion": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "estado": {
+                  "type": "string",
+                  "enum": [
+                    "informado",
+                    "preliminar"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "valor": {
+                  "type": "string"
+                },
+                "clase": {
+                  "type": "string",
+                  "enum": [
+                    "oficial",
+                    "estimacion",
+                    "prueba"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "valor": {
+                  "type": "null"
+                },
+                "clase": {
+                  "const": "no_disponible"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "valoracion": {
+                  "const": "nominal"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "anio_referencia": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "metrica": {
+                  "const": "crecimiento"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "valoracion": {
+                  "const": "real"
+                },
+                "unidad": {
+                  "const": "%"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "metrica": {
+                  "const": "participacion"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "valoracion": {
+                  "const": "nominal"
+                },
+                "unidad": {
+                  "const": "%"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "anio": {
+                  "const": 2012
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "metrica": {
+                  "const": "nivel"
+                },
+                "valoracion": {
+                  "const": "real"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "procedencias": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "observacion",
+          "publicacion",
+          "serie_bde",
+          "artefacto",
+          "selector",
+          "formula_version",
+          "insumos",
+          "motivo"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "observacion": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "publicacion": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "serie_bde": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "artefacto": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selector": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "formula_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "insumos": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+            }
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

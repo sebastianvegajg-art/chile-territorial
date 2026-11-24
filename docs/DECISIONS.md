@@ -1,8 +1,8 @@
 # Registro de decisiones
 
-Estado inicial de todas las entradas: **propuesta para aprobación**. Las revisiones conservarán fecha, responsable, estado y razón del cambio.
+**ADR-001 a ADR-007 aprobadas por el titular del proyecto el 24 de noviembre de 2026.** La aprobación se otorgó en la conversación del proyecto y se registra mediante el [PR #1](https://github.com/sebastianvegajg-art/chile-territorial/pull/1). La integración del PR requiere autorización separada. Las revisiones conservarán fecha, responsable, estado y razón del cambio.
 
-| ID | Decisión propuesta | Razón y alternativa |
+| ID | Decisión aprobada | Razón y alternativa |
 |---|---|---|
 | ADR-001 | React/TypeScript, FastAPI y PostgreSQL en un monolito modular | Amplía la prueba Excel a una API trazable con contratos. Una web estática es viable para exhibir un corte; DuckDB puede complementar el análisis local |
 | ADR-002 | Ingesta fuera de las solicitudes web, publicaciones inmutables con promoción transaccional | Aísla fallas y permite reproducir consultas. Una consulta directa a la fuente depende de su disponibilidad y revisiones |

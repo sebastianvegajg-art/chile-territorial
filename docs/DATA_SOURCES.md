@@ -32,4 +32,6 @@ Endpoint reportado y documentado: `https://si3.bcentral.cl/SieteRestWS/SieteRest
 - PIB Aysén real: `F035.PIB.FLU.R.CLP.2018.Z.Z.Z.11.0.A`.
 - PIB Aysén nominal: `F035.PIB.FLU.N.CLP.2018.Z.Z.Z.11.0.A`.
 
+Conservar un inventario fechado y con hash de los códigos sectoriales de la prueba de 416 series cuando esté disponible. Comparar por identificador oficial y reportar altas, bajas y cambios en geografía, actividad, valoración, frecuencia, unidad y referencia. Si falta el inventario original, marcar la comparación histórica como pendiente y usar la primera extracción verificable como corte reproducible.
+
 Confirmar cada código en el catálogo y mapear títulos y metadatos sin derivar códigos sectoriales por patrón. La prueba de una fuente registra recurso exacto, términos, acceso, archivos y hashes, esquema, unidad, años, grano, geografía, restricciones, indicadores de cobertura, faltantes y resultados repetibles, sin secretos. Al aceptar la prueba se actualiza el estado con la evidencia. Una ficha documental no sustituye una extracción.

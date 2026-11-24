@@ -1,4 +1,4 @@
-# Arquitectura propuesta
+# Arquitectura aprobada
 
 ## Componentes y alternativas
 
@@ -13,7 +13,9 @@ Python concentra ingesta, validación y análisis. FastAPI ofrece validación ti
 3. Cargar con claves naturales y comparar cambios frente al corte anterior. Publicar dentro de una transacción con exclusión de promociones concurrentes por conjunto; conservar el último corte aprobado ante fallas. Asignar a cada publicación un manifiesto inmutable.
 4. Servir vistas de solo lectura por corte explícito o por la última versión aprobada. API y frontend conservan el identificador devuelto al navegar, comparar y descargar. Separar permisos de ingesta y consulta.
 
-## Contrato inicial para revisión
+## Contrato inicial
+
+La especificación versionada, el esquema de datos y el ejemplo sintético están en [contratos del MVP](../contracts/README.md).
 
 | Operación | Parámetros y salida |
 |---|---|

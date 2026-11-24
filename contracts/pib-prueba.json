@@ -1,0 +1,64 @@
+{
+  "publicacion": {
+    "id": "prueba-local",
+    "fecha": "2026-11-24T00:00:00Z",
+    "estado": "prueba",
+    "fuente": "fixture-sintetico",
+    "cobertura": {
+      "esperadas": 2,
+      "disponibles": 1
+    },
+    "cambios": []
+  },
+  "artefactos": [],
+  "observaciones": [
+    {
+      "id": "prueba-11-2024",
+      "territorio": "11",
+      "anio": 2024,
+      "metrica": "nivel",
+      "valoracion": "nominal",
+      "valor": "0",
+      "unidad": "millones CLP",
+      "anio_referencia": null,
+      "estado": "informado",
+      "clase": "prueba",
+      "publicacion": "prueba-local"
+    },
+    {
+      "id": "prueba-11-2025",
+      "territorio": "11",
+      "anio": 2025,
+      "metrica": "nivel",
+      "valoracion": "nominal",
+      "valor": null,
+      "unidad": "millones CLP",
+      "anio_referencia": null,
+      "estado": "faltante",
+      "clase": "no_disponible",
+      "publicacion": "prueba-local"
+    }
+  ],
+  "procedencias": [
+    {
+      "observacion": "prueba-11-2024",
+      "publicacion": "prueba-local",
+      "serie_bde": null,
+      "artefacto": null,
+      "selector": null,
+      "formula_version": null,
+      "insumos": [],
+      "motivo": "Dato sintético para probar el cero."
+    },
+    {
+      "observacion": "prueba-11-2025",
+      "publicacion": "prueba-local",
+      "serie_bde": null,
+      "artefacto": null,
+      "selector": null,
+      "formula_version": null,
+      "insumos": [],
+      "motivo": "Ausencia sintética para probar la interfaz."
+    }
+  ]
+}

@@ -11,4 +11,4 @@ Trabaja en español, dentro de los archivos asignados en [roles](docs/AGENT_ROLE
 - Valida la disponibilidad y cobertura de cada fuente antes de declarar una integración operativa. Registra evidencia reproducible de la prueba con fecha y sin secretos.
 - Implementa pruebas automatizadas de regresión, deduplicación, revisiones, faltantes, contratos y fórmulas donde corresponda. Entrega resultados verificables, referencias, supuestos y pendientes.
 - Diseña para teclado, lectores de pantalla, móvil y lectura clara. Ofrece tablas equivalentes a los gráficos y explica el significado de cada indicador.
-- La implementación paralela comienza después de aprobar la arquitectura común. El despliegue público, contratación y modificación de recursos externos requieren autorización expresa.
+- La arquitectura común está aprobada. Inicia la implementación paralela cuando el titular autorice activar los agentes. Aplica la [matriz de archivos compartidos](docs/AGENT_ROLES.md). El despliegue público, contratación y modificación de recursos externos requieren autorización expresa.
