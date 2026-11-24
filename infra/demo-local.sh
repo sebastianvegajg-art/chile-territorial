@@ -14,7 +14,7 @@ CT_MODO=demo "${CT_PYTHON:-python}" -m uvicorn apps.api.main:app --host 127.0.0.
 api_pid=$!
 (
   cd apps/web
-  exec node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173 --strictPort
+  exec node node_modules/vite/bin/vite.js --mode demo --host 127.0.0.1 --port 5173 --strictPort
 ) &
 web_pid=$!
 printf '%s\n' 'Comparador de prueba en http://127.0.0.1:5173'
