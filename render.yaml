@@ -1,0 +1,20 @@
+# Blueprint de despliegue del backend FastAPI de Chile Territorial en Render
+# Conectar este repositorio desde https://dashboard.render.com/blueprints
+services:
+  - type: web
+    name: chile-territorial-api
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r apps/api/requirements.txt
+    startCommand: python infra/preparar-datos-oficiales.py --solo-faltantes && uvicorn apps.api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: CT_AUTODETECTAR_LOTE
+        value: "1"
+      - key: BCCH_API_TOKEN
+        sync: false
+      - key: CT_CORS_ORIGINS
+        sync: false

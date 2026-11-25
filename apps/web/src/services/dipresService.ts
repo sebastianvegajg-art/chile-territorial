@@ -60,6 +60,12 @@ export interface DipresAysenResponse {
   region_nombre: string
   etapa_contable: string | null
   moneda: string | null
+  mes_corte?: number | null
+  mes_corte_nombre?: string | null
+  es_cierre_anual?: boolean | null
+  advertencia_comparabilidad_meses?: string | null
+  estado_actualizacion?: string | null
+  advertencia_respaldo?: string | null
   gore_aysen: DipresGoreAysen
   servicios_publicos_aysen: DipresServicioAysen[]
   servicios_total_millones: number | null
@@ -180,6 +186,47 @@ export async function fetchDipresAysen(
     desde_cache: typeof fuenteRaw.desde_cache === 'boolean' ? fuenteRaw.desde_cache : undefined,
   }
 
+  const mesCorteRaw = toNumberOrNull(raw.mes_corte ?? fuenteRaw.mes_corte)
+  const mesCorte = mesCorteRaw !== null ? Math.trunc(mesCorteRaw) : null
+  const mesCorteNombre =
+    typeof raw.mes_corte_nombre === 'string'
+      ? raw.mes_corte_nombre
+      : typeof fuenteRaw.mes_corte_nombre === 'string'
+        ? fuenteRaw.mes_corte_nombre
+        : typeof fuenteRaw.mes_nombre === 'string'
+          ? fuenteRaw.mes_nombre
+          : null
+  const esCierreAnual =
+    typeof raw.es_cierre_anual === 'boolean'
+      ? raw.es_cierre_anual
+      : typeof fuenteRaw.es_cierre_anual === 'boolean'
+        ? fuenteRaw.es_cierre_anual
+        : mesCorte !== null
+          ? mesCorte === 12
+          : null
+  const advertenciaComparabilidad =
+    typeof raw.advertencia_comparabilidad_meses === 'string'
+      ? raw.advertencia_comparabilidad_meses
+      : typeof fuenteRaw.advertencia_comparabilidad_meses === 'string'
+        ? fuenteRaw.advertencia_comparabilidad_meses
+        : mesCorte !== null && mesCorte < 12
+          ? `Corte parcial acumulado al mes ${mesCorte}${mesCorteNombre ? ` (${mesCorteNombre})` : ''}. No comparar directamente con cierres anuales completos de diciembre (12 meses) sin ajustar a meses equivalentes.`
+          : null
+  const estadoActualizacion =
+    typeof raw.estado_actualizacion === 'string'
+      ? raw.estado_actualizacion
+      : typeof fuenteRaw.estado_actualizacion === 'string'
+        ? fuenteRaw.estado_actualizacion
+        : null
+  const advertenciaRespaldo =
+    typeof raw.advertencia_respaldo === 'string'
+      ? raw.advertencia_respaldo
+      : typeof fuenteRaw.advertencia_respaldo === 'string'
+        ? fuenteRaw.advertencia_respaldo
+        : typeof raw.advertencia === 'string'
+          ? raw.advertencia
+          : null
+
   return {
     anio: typeof raw.anio === 'number' ? raw.anio : (anio ?? 2025),
     region_codigo: String(raw.region_codigo ?? '11'),
@@ -190,6 +237,12 @@ export async function fetchDipresAysen(
         ? raw.etapa_contable
         : null,
     moneda: typeof fuenteRaw.unidad_salida === 'string' ? fuenteRaw.unidad_salida : 'millones CLP',
+    mes_corte: mesCorte,
+    mes_corte_nombre: mesCorteNombre,
+    es_cierre_anual: esCierreAnual,
+    advertencia_comparabilidad_meses: advertenciaComparabilidad,
+    estado_actualizacion: estadoActualizacion,
+    advertencia_respaldo: advertenciaRespaldo,
     gore_aysen: {
       nombre: typeof goreRaw.nombre === 'string' ? goreRaw.nombre : 'Gobierno Regional de Aysén',
       partida: typeof goreRaw.partida === 'string' ? goreRaw.partida : '31',

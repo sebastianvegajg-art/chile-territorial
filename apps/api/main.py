@@ -9,10 +9,13 @@ from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Path as PathParameter, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from . import demo
+from .aysen_piloto import router as aysen_piloto_router
 from .conectores import router as conectores_router
+from .fase2 import router as fase2_router
 from .lote_oficial import LoteOficial
 
 PREFIJO = "/api/v1"
@@ -89,12 +92,54 @@ class Repositorio:
 
 
 def crear_app(demo_activa=False, lote_oficial=None):
+    raiz_repo = Path(__file__).resolve().parents[2]
     if not demo_activa and lote_oficial is None and not os.getenv("DATABASE_URL"):
-        lote_oficial = (os.getenv("CT_LOTE_OFICIAL") or "").strip() or None
+        env_lote = (os.getenv("CT_LOTE_OFICIAL") or "").strip()
+        if env_lote:
+            lote_oficial = env_lote
+        elif os.getenv("CT_AUTODETECTAR_LOTE") == "1":
+            for cand in (
+                raiz_repo / "data" / "published" / "pib-bde-api.json",
+                raiz_repo / "data" / "published" / "pib-bde-publico.json",
+            ):
+                if cand.exists():
+                    lote_oficial = str(cand)
+                    break
     app = FastAPI(title="Chile Territorial · PIB")
+    cors_env = (os.getenv("CT_CORS_ORIGINS") or "").strip()
+    if cors_env:
+        origenes = [o.strip().rstrip("/") for o in cors_env.split(",") if o.strip()]
+        if origenes:
+            app.add_middleware(
+                CORSMiddleware,
+                allow_origins=origenes,
+                allow_credentials=False,
+                allow_methods=["GET", "POST", "OPTIONS"],
+                allow_headers=["Content-Type", "Accept"],
+            )
     repo = Repositorio(demo_activa=demo_activa, lote_oficial=lote_oficial)
-    contrato = Path(__file__).resolve().parents[2] / "contracts/openapi.json"
+    contrato = raiz_repo / "contracts/openapi.json"
     app.openapi = lambda: json.loads(contrato.read_text(encoding="utf-8"))
+
+    @app.get("/healthz", include_in_schema=False)
+    def healthz():
+        pub_dir = raiz_repo / "data" / "published"
+        raw_dir = raiz_repo / "data" / "raw"
+        return {
+            "estado": "ok",
+            "servicio": "chile-territorial-api",
+            "modo": "demo" if repo.demo else ("lote_oficial" if repo.lote is not None else "postgres"),
+            "datos_publicados": {
+                "pib_api": (pub_dir / "pib-bde-api.json").exists(),
+                "pib_publico": (pub_dir / "pib-bde-publico.json").exists(),
+                "sectorial_416": (pub_dir / "pib-sectorial-16-regiones.json").exists(),
+                "poblacion_ine": (pub_dir / "poblacion-ine-regiones.json").exists(),
+                "sinim_aysen": (pub_dir / "sinim-aysen-oficial.json").exists(),
+                "proyectos_mop": (pub_dir / "proyectos-mop-aysen.json").exists(),
+                "dipres_2025": (raw_dir / "dipres-piloto-2025.json").exists(),
+                "dipres_2026": (raw_dir / "dipres-piloto-2026.json").exists(),
+            },
+        }
 
     @app.exception_handler(HTTPException)
     async def error(_: Request, exc: HTTPException):
@@ -170,6 +215,8 @@ def crear_app(demo_activa=False, lote_oficial=None):
         return value
 
     app.include_router(conectores_router)
+    app.include_router(fase2_router)
+    app.include_router(aysen_piloto_router)
 
     return app
 

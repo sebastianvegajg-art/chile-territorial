@@ -21,6 +21,12 @@ COBERTURAS_TERRITORIALES_VALIDAS = ("localizado", "multirregional", "sin_asignac
 CERO = Decimal("0")
 CIEN = Decimal("100")
 
+ESQUEMA_CRUCE1_DISPONIBILIDAD = "fiscal-cruce1-disponibilidad-v1"
+ADVERTENCIA_CAJA_DISPONIBILIDAD = (
+    "La disponibilidad presupuestaria no equivale a disponibilidad efectiva "
+    "de caja ni acredita liquidez de tesorería."
+)
+
 NumeroEntrada = Union[Decimal, int, str, None]
 
 
@@ -308,6 +314,231 @@ def tasa_ejecucion(
         motivo=None,
         requiere_revision=False,
     )
+
+
+def analizar_disponibilidad_presupuestaria(
+    presupuesto_inicial: NumeroEntrada,
+    presupuesto_vigente: NumeroEntrada,
+    arrastre_ejercicios_anteriores: NumeroEntrada = None,
+    compromisos_plurianuales_ejercicio: NumeroEntrada = None,
+    nuevos_compromisos: NumeroEntrada = None,
+    devengo_acumulado: NumeroEntrada = None,
+    pagos_acumulados: NumeroEntrada = None,
+    *,
+    compromiso_pendiente_devengar: NumeroEntrada = None,
+    compromisos_completos: bool = True,
+) -> dict[str, Any]:
+    """Cruce 1: Presupuesto nominal vs disponibilidad efectiva y arrastre.
+
+    Separa estrictamente las etapas contables (inicial, vigente, compromiso,
+    devengo y pago) usando aritmética exacta ``Decimal`` (precisión 34), sin
+    aceptar ``float`` ni estimar compromisos faltantes.
+
+    Reglas principales:
+    - ``saldo_por_devengar = presupuesto_vigente - devengo_acumulado``.
+    - ``compromiso_total_ejercicio = arrastre + plurianuales + nuevos_compromisos``
+      únicamente cuando los tres componentes están informados.
+    - ``margen_no_comprometido``:
+      * Si se entrega ``compromiso_pendiente_devengar`` explícito (y
+        ``compromisos_completos=True``), calcula
+        ``vigente - devengo - compromiso_pendiente_devengar``.
+      * En su defecto, si ``compromiso_total_ejercicio`` está completo (y
+        ``compromisos_completos=True``), deriva
+        ``vigente - max(devengo, compromiso_total_ejercicio)`` (equivalente a
+        ``vigente - devengo - max(0, compromiso_total_ejercicio - devengo)``).
+      * Si faltan compromisos o ``compromisos_completos=False``, retorna
+        ``None`` con motivo explícito sin inventar holgura.
+    - ``porcentaje_arrastre_sobre_vigente = 100 * arrastre / vigente``.
+    - ``desfase_devengo_pago = devengo_acumulado - pagos_acumulados`` cuando
+      ambos están informados.
+    - ``tasa_ejecucion_pct = 100 * devengo_acumulado / presupuesto_vigente``.
+    """
+    inicial_dec = _a_decimal(presupuesto_inicial, "presupuesto_inicial")
+    vigente_dec = _a_decimal(presupuesto_vigente, "presupuesto_vigente")
+    arrastre_dec = _a_decimal(
+        arrastre_ejercicios_anteriores, "arrastre_ejercicios_anteriores"
+    )
+    plurianuales_dec = _a_decimal(
+        compromisos_plurianuales_ejercicio, "compromisos_plurianuales_ejercicio"
+    )
+    nuevos_dec = _a_decimal(nuevos_compromisos, "nuevos_compromisos")
+    devengo_dec = _a_decimal(devengo_acumulado, "devengo_acumulado")
+    pagos_dec = _a_decimal(pagos_acumulados, "pagos_acumulados")
+    comp_pend_explicito_dec = _a_decimal(
+        compromiso_pendiente_devengar, "compromiso_pendiente_devengar"
+    )
+
+    for nombre_comp, valor_comp in (
+        ("arrastre_ejercicios_anteriores", arrastre_dec),
+        ("compromisos_plurianuales_ejercicio", plurianuales_dec),
+        ("nuevos_compromisos", nuevos_dec),
+        ("compromiso_pendiente_devengar", comp_pend_explicito_dec),
+    ):
+        if valor_comp is not None and valor_comp < CERO:
+            raise ValueError(
+                f"El campo '{nombre_comp}' no puede ser negativo; se recibió {valor_comp}."
+            )
+
+    motivos_no_calculable: dict[str, str] = {}
+    alertas_revision: list[str] = []
+
+    res_saldo_devengar = saldo_por_devengar(vigente_dec, devengo_dec)
+    if res_saldo_devengar.valor is None and res_saldo_devengar.motivo:
+        motivos_no_calculable["saldo_por_devengar"] = res_saldo_devengar.motivo
+    if res_saldo_devengar.requiere_revision and res_saldo_devengar.motivo:
+        alertas_revision.append(res_saldo_devengar.motivo)
+
+    res_tasa = tasa_ejecucion(devengo_dec, vigente_dec)
+    if res_tasa.valor is None and res_tasa.motivo:
+        motivos_no_calculable["tasa_ejecucion_pct"] = res_tasa.motivo
+    if res_tasa.requiere_revision and res_tasa.motivo:
+        alertas_revision.append(res_tasa.motivo)
+
+    with localcontext(CONTEXTO_DECIMAL):
+        # Variación presupuestaria (vigente - inicial)
+        variacion_vigente_inicial: Optional[Decimal] = None
+        if inicial_dec is not None and vigente_dec is not None:
+            variacion_vigente_inicial = vigente_dec - inicial_dec
+        else:
+            motivos_no_calculable["variacion_vigente_sobre_inicial"] = (
+                "inicial_o_vigente_faltante"
+            )
+
+        # Compromiso total del ejercicio (exige los tres componentes)
+        faltantes_comp = [
+            nombre
+            for nombre, val in (
+                ("arrastre_ejercicios_anteriores", arrastre_dec),
+                ("compromisos_plurianuales_ejercicio", plurianuales_dec),
+                ("nuevos_compromisos", nuevos_dec),
+            )
+            if val is None
+        ]
+        compromiso_total: Optional[Decimal] = None
+        if not faltantes_comp:
+            assert (
+                arrastre_dec is not None
+                and plurianuales_dec is not None
+                and nuevos_dec is not None
+            )
+            compromiso_total = arrastre_dec + plurianuales_dec + nuevos_dec
+        else:
+            motivos_no_calculable["compromiso_total_ejercicio"] = (
+                "componentes_compromiso_faltantes:" + ",".join(faltantes_comp)
+            )
+
+        # Margen presupuestario no comprometido
+        margen_no_comprometido: Optional[Decimal] = None
+        compromiso_pendiente_aplicado: Optional[Decimal] = None
+        metodo_margen: Optional[str] = None
+        motivo_margen: Optional[str] = None
+
+        if not compromisos_completos:
+            motivo_margen = "compromisos_incompletos_o_no_disponibles"
+            motivos_no_calculable["margen_no_comprometido"] = motivo_margen
+        elif comp_pend_explicito_dec is not None:
+            res_margen = saldo_no_comprometido(
+                vigente_dec,
+                devengo_dec,
+                comp_pend_explicito_dec,
+                compromisos_completos=True,
+            )
+            margen_no_comprometido = res_margen.valor
+            if margen_no_comprometido is not None:
+                compromiso_pendiente_aplicado = comp_pend_explicito_dec
+                metodo_margen = "vigente_menos_devengo_menos_compromiso_pendiente"
+                if res_margen.requiere_revision and res_margen.motivo:
+                    alertas_revision.append(res_margen.motivo)
+            else:
+                motivo_margen = res_margen.motivo
+                if motivo_margen:
+                    motivos_no_calculable["margen_no_comprometido"] = motivo_margen
+        elif compromiso_total is not None:
+            if vigente_dec is None or devengo_dec is None:
+                motivo_margen = "vigente_o_devengo_faltante"
+                motivos_no_calculable["margen_no_comprometido"] = motivo_margen
+            else:
+                compromiso_o_devengo = (
+                    devengo_dec
+                    if devengo_dec >= compromiso_total
+                    else compromiso_total
+                )
+                margen_no_comprometido = vigente_dec - compromiso_o_devengo
+                compromiso_pendiente_aplicado = (
+                    compromiso_total - devengo_dec
+                    if compromiso_total > devengo_dec
+                    else CERO
+                )
+                metodo_margen = "vigente_menos_max_devengo_o_compromiso_total"
+                if devengo_dec > compromiso_total:
+                    alertas_revision.append("devengo_supera_compromiso_total_revisar")
+                if margen_no_comprometido < CERO:
+                    alertas_revision.append("margen_no_comprometido_negativo_revisar")
+        else:
+            motivo_margen = (
+                "compromisos_incompletos_o_no_disponibles:"
+                + ",".join(faltantes_comp)
+            )
+            motivos_no_calculable["margen_no_comprometido"] = motivo_margen
+
+        # Porcentaje de arrastre sobre presupuesto vigente
+        pct_arrastre: Optional[Decimal] = None
+        if arrastre_dec is None or vigente_dec is None:
+            motivos_no_calculable["porcentaje_arrastre_sobre_vigente"] = (
+                "arrastre_o_vigente_faltante"
+            )
+        elif vigente_dec == CERO:
+            motivos_no_calculable["porcentaje_arrastre_sobre_vigente"] = (
+                "denominador_cero_vigente"
+            )
+        elif vigente_dec < CERO:
+            motivos_no_calculable["porcentaje_arrastre_sobre_vigente"] = (
+                "denominador_negativo_invalido"
+            )
+        else:
+            pct_arrastre = (CIEN * arrastre_dec) / vigente_dec
+            if pct_arrastre > CIEN:
+                alertas_revision.append("arrastre_superior_al_vigente_revisar")
+
+        # Desfase entre devengo acumulado y pagos acumulados (deuda flotante del ejercicio)
+        desfase_devengo_pago: Optional[Decimal] = None
+        if devengo_dec is not None and pagos_dec is not None:
+            desfase_devengo_pago = devengo_dec - pagos_dec
+            if desfase_devengo_pago < CERO:
+                alertas_revision.append("pagos_superiores_a_devengo_revisar")
+        else:
+            motivos_no_calculable["desfase_devengo_pago"] = (
+                "pagos_o_devengo_faltante"
+            )
+
+    return {
+        "esquema": ESQUEMA_CRUCE1_DISPONIBILIDAD,
+        "etapas_separadas": True,
+        "entradas": {
+            "presupuesto_inicial": inicial_dec,
+            "presupuesto_vigente": vigente_dec,
+            "arrastre_ejercicios_anteriores": arrastre_dec,
+            "compromisos_plurianuales_ejercicio": plurianuales_dec,
+            "nuevos_compromisos": nuevos_dec,
+            "compromiso_pendiente_devengar": comp_pend_explicito_dec,
+            "devengo_acumulado": devengo_dec,
+            "pagos_acumulados": pagos_dec,
+        },
+        "variacion_vigente_sobre_inicial": variacion_vigente_inicial,
+        "saldo_por_devengar": res_saldo_devengar.valor,
+        "compromiso_total_ejercicio": compromiso_total,
+        "compromiso_pendiente_aplicado": compromiso_pendiente_aplicado,
+        "margen_no_comprometido": margen_no_comprometido,
+        "metodo_margen_no_comprometido": metodo_margen,
+        "motivo_margen_no_comprometido": motivo_margen,
+        "porcentaje_arrastre_sobre_vigente": pct_arrastre,
+        "desfase_devengo_pago": desfase_devengo_pago,
+        "tasa_ejecucion_pct": res_tasa.valor,
+        "requiere_revision": bool(alertas_revision),
+        "alertas_revision": alertas_revision,
+        "motivos_no_calculable": motivos_no_calculable,
+        "advertencia_caja": ADVERTENCIA_CAJA_DISPONIBILIDAD,
+    }
 
 
 def _normalizar_movimiento(

@@ -2,7 +2,10 @@ declare const __CT_DEMO_DEFAULT__: boolean
 
 export const demoDefault = __CT_DEMO_DEFAULT__
 export const demoRelease = 'prueba-local'
-export const apiRoot = '/api/v1'
+const rawApiBase = (import.meta.env.VITE_API_BASE as string | undefined)?.trim().replace(/\/+$/, '') || ''
+export const apiRoot = rawApiBase
+  ? (rawApiBase.endsWith('/api/v1') ? rawApiBase : `${rawApiBase}/api/v1`)
+  : '/api/v1'
 
 export type Metric = 'nivel' | 'crecimiento' | 'participacion'
 export type Valuation = 'real' | 'nominal'

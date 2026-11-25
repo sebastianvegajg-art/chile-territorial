@@ -5,10 +5,13 @@ import type { Metric, Observation, Provenance, Publication, Territory, Valuation
 import { History } from './history'
 import { comparable, compareValues, derive } from './metrics'
 import type { Derived } from './metrics'
+import { DemografiaView } from './DemografiaView'
+import { EstructuraView } from './EstructuraView'
+import { LaboratorioView } from './LaboratorioView'
 import { PoliticalView } from './PoliticalView'
 import './styles.css'
 
-type Page = 'comparar' | 'politica' | 'metodologia'
+type Page = 'comparar' | 'politica' | 'estructura' | 'demografia' | 'laboratorio' | 'metodologia'
 
 const POLITICAL_HASHES = new Set([
   '#politica',
@@ -23,6 +26,9 @@ const POLITICAL_HASHES = new Set([
 function resolvePage(hash: string, current: Page = 'comparar'): Page {
   if (hash === '#contenido') return current
   if (hash === '#metodologia') return 'metodologia'
+  if (hash === '#estructura') return 'estructura'
+  if (hash === '#demografia') return 'demografia'
+  if (hash === '#laboratorio') return 'laboratorio'
   if (POLITICAL_HASHES.has(hash)) return 'politica'
   return 'comparar'
 }
@@ -345,6 +351,19 @@ function App() {
         </div>
       </header>
 
+      {!standalone && (
+        <div className="module-bar-wrap">
+          <nav className="module-bar wrap" aria-label="Módulos del observatorio">
+            <a href="#comparar" aria-current={page === 'comparar' ? 'page' : undefined}>Comparador PIB</a>
+            <a href="#politica" aria-current={page === 'politica' ? 'page' : undefined}>Vista Política Aysén</a>
+            <a href="#estructura" aria-current={page === 'estructura' ? 'page' : undefined}>Estructura 16 Regiones</a>
+            <a href="#demografia" aria-current={page === 'demografia' ? 'page' : undefined}>PIB per Cápita</a>
+            <a href="#laboratorio" aria-current={page === 'laboratorio' ? 'page' : undefined}>Laboratorio y Dossiers</a>
+            <a href="#metodologia" aria-current={page === 'metodologia' ? 'page' : undefined}>Metodología y fuentes</a>
+          </nav>
+        </div>
+      )}
+
       <main id="contenido" className="wrap" tabIndex={-1}>
         {page === 'politica' ? (
           standalone ? (
@@ -359,6 +378,45 @@ function App() {
             </section>
           ) : (
             <PoliticalView />
+          )
+        ) : page === 'estructura' ? (
+          standalone ? (
+            <section className="panel standalone-notice" aria-labelledby="standalone-estructura-titulo">
+              <p className="eyebrow">Copia HTML autónoma sin conexión</p>
+              <h1 id="standalone-estructura-titulo">Estructura Productiva no disponible sin conexión</h1>
+              <p className="lede">
+                El módulo de Estructura Productiva y Especialización (416 series BCCh-BDE) consulta el servidor local de Chile Territorial.
+              </p>
+              <a className="primary link-button" href="#comparar">Volver al comparador</a>
+            </section>
+          ) : (
+            <EstructuraView />
+          )
+        ) : page === 'demografia' ? (
+          standalone ? (
+            <section className="panel standalone-notice" aria-labelledby="standalone-demografia-titulo">
+              <p className="eyebrow">Copia HTML autónoma sin conexión</p>
+              <h1 id="standalone-demografia-titulo">PIB per Cápita y Convergencia no disponible sin conexión</h1>
+              <p className="lede">
+                El módulo de PIB per Cápita, Población INE y σ-convergencia requiere conexión al servidor local de Chile Territorial.
+              </p>
+              <a className="primary link-button" href="#comparar">Volver al comparador</a>
+            </section>
+          ) : (
+            <DemografiaView />
+          )
+        ) : page === 'laboratorio' ? (
+          standalone ? (
+            <section className="panel standalone-notice" aria-labelledby="standalone-laboratorio-titulo">
+              <p className="eyebrow">Copia HTML autónoma sin conexión</p>
+              <h1 id="standalone-laboratorio-titulo">Laboratorio y Dossiers no disponible sin conexión</h1>
+              <p className="lede">
+                El Laboratorio de Investigación y Dossiers de solo lectura requiere conexión al servidor local de Chile Territorial.
+              </p>
+              <a className="primary link-button" href="#comparar">Volver al comparador</a>
+            </section>
+          ) : (
+            <LaboratorioView />
           )
         ) : page === 'metodologia' ? (
           <article className="method">

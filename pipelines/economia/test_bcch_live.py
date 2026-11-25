@@ -164,20 +164,16 @@ class CredencialesBCChLiveTests(unittest.TestCase):
     def setUp(self) -> None:
         bcch_live.limpiar_cache_memoria()
 
-    def test_resuelve_bcch_api_token_y_vite_token_con_precedencia(self):
+    def test_resuelve_bcch_api_token_con_precedencia_entorno_sobre_env(self):
         with TemporaryDirectory() as tmp:
             env_file = Path(tmp) / ".env"
-            env_file.write_text(
-                "VITE_BCENTRAL_TOKEN=vite-env-secreto\n"
-                "NEXT_PUBLIC_BCENTRAL_TOKEN=next-env-secreto\n",
-                encoding="utf-8",
-            )
+            env_file.write_text("BCCH_API_TOKEN=bcch-env-secreto\n", encoding="utf-8")
             with patch.dict("os.environ", {}, clear=True):
-                cred_vite = bcch_live.obtener_credenciales_bcch(env_path=env_file)
-                self.assertEqual(cred_vite.modo, "token")
-                self.assertEqual(cred_vite.parametros_consulta(), {"token": "vite-env-secreto"})
-                self.assertNotIn("vite-env-secreto", repr(cred_vite))
-                self.assertNotIn("vite-env-secreto", str(cred_vite))
+                cred_env = bcch_live.obtener_credenciales_bcch(env_path=env_file)
+                self.assertEqual(cred_env.modo, "token")
+                self.assertEqual(cred_env.parametros_consulta(), {"token": "bcch-env-secreto"})
+                self.assertNotIn("bcch-env-secreto", repr(cred_env))
+                self.assertNotIn("bcch-env-secreto", str(cred_env))
 
             # BCCH_API_TOKEN en entorno tiene precedencia sobre .env
             with patch.dict("os.environ", {"BCCH_API_TOKEN": "bcch-proc-secreto"}, clear=True):
@@ -185,26 +181,51 @@ class CredencialesBCChLiveTests(unittest.TestCase):
                 self.assertEqual(cred_proc.parametros_consulta(), {"token": "bcch-proc-secreto"})
                 self.assertNotIn("bcch-proc-secreto", repr(cred_proc))
 
-            # VITE_BCENTRAL_TOKEN en entorno tiene precedencia sobre BCCH_API_TOKEN en .env
-            env_file.write_text("BCCH_API_TOKEN=bcch-env-secundario\n", encoding="utf-8")
-            with patch.dict("os.environ", {"VITE_BCENTRAL_TOKEN": "vite-proc-prioritario"}, clear=True):
-                cred_ent = bcch_live.obtener_credenciales_bcch(env_path=env_file)
-                self.assertEqual(cred_ent.parametros_consulta(), {"token": "vite-proc-prioritario"})
-
-    def test_resuelve_next_public_y_user_pass(self):
+    def test_resuelve_user_pass_desde_env_y_entorno(self):
         with TemporaryDirectory() as tmp:
             env_file = Path(tmp) / ".env"
-            env_file.write_text("NEXT_PUBLIC_BCENTRAL_TOKEN=next-tok-123\n", encoding="utf-8")
-            with patch.dict("os.environ", {}, clear=True):
-                cred = bcch_live.obtener_credenciales_bcch(env_path=env_file)
-                self.assertEqual(cred.parametros_consulta(), {"token": "next-tok-123"})
-
             env_file.write_text("BCCH_API_USER=usr@test.cl\nBCCH_API_PASS=clave#99\n", encoding="utf-8")
             with patch.dict("os.environ", {}, clear=True):
                 cred_up = bcch_live.obtener_credenciales_bcch(env_path=env_file)
                 self.assertEqual(cred_up.modo, "user_pass")
                 self.assertEqual(cred_up.parametros_consulta(), {"user": "usr@test.cl", "pass": "clave#99"})
                 self.assertNotIn("clave#99", repr(cred_up))
+                self.assertNotIn("usr@test.cl", str(cred_up))
+
+            with patch.dict(
+                "os.environ",
+                {"BCCH_API_USER": "proc@test.cl", "BCCH_API_PASS": "clave-proc"},
+                clear=True,
+            ):
+                cred_proc = bcch_live.obtener_credenciales_bcch(env_path=env_file)
+                self.assertEqual(cred_proc.modo, "user_pass")
+                self.assertEqual(
+                    cred_proc.parametros_consulta(),
+                    {"user": "proc@test.cl", "pass": "clave-proc"},
+                )
+
+    def test_rechaza_alias_publicos_frontend_con_falta_token_error(self):
+        with TemporaryDirectory() as tmp:
+            env_file = Path(tmp) / ".env"
+            env_file.write_text(
+                "VITE_BCENTRAL_TOKEN=vite-inseguro-123\n"
+                "NEXT_PUBLIC_BCENTRAL_TOKEN=next-inseguro-456\n",
+                encoding="utf-8",
+            )
+            with patch.dict("os.environ", {}, clear=True):
+                with self.assertRaises(bcch_live.FaltaTokenBCChError) as err_env:
+                    bcch_live.obtener_credenciales_bcch(env_path=env_file)
+                self.assertNotIn("vite-inseguro-123", str(err_env.exception))
+                self.assertNotIn("next-inseguro-456", str(err_env.exception))
+
+            env_vacio = Path(tmp) / "vacio.env"
+            for alias in ("VITE_BCENTRAL_TOKEN", "NEXT_PUBLIC_BCENTRAL_TOKEN"):
+                with patch.dict("os.environ", {alias: "tok-frontend-prohibido"}, clear=True):
+                    with self.assertRaises(bcch_live.FaltaTokenBCChError) as err_proc:
+                        bcch_live.obtener_credenciales_bcch(env_path=env_vacio)
+                    self.assertNotIn("tok-frontend-prohibido", str(err_proc.exception))
+                    self.assertNotIn("VITE_BCENTRAL_TOKEN", str(err_proc.exception))
+                    self.assertNotIn("NEXT_PUBLIC_BCENTRAL_TOKEN", str(err_proc.exception))
 
     def test_falta_token_lanza_error_especifico_y_seguro(self):
         with TemporaryDirectory() as tmp:
@@ -213,10 +234,9 @@ class CredencialesBCChLiveTests(unittest.TestCase):
                 with self.assertRaises(bcch_live.FaltaTokenBCChError) as caught:
                     bcch_live.obtener_credenciales_bcch(env_path=env_inexistente)
                 self.assertIsInstance(caught.exception, bde_api.BdeApiError)
-                self.assertEqual(
-                    str(caught.exception),
-                    "Falta configurar BCCH_API_TOKEN (o VITE_BCENTRAL_TOKEN) en .env local del servidor.",
-                )
+                self.assertIn("BCCH_API_TOKEN", str(caught.exception))
+                self.assertNotIn("VITE_", str(caught.exception))
+                self.assertNotIn("NEXT_PUBLIC_", str(caught.exception))
 
             # Usuario sin clave lanza FaltaTokenBCChError sin exponer usuario
             with patch.dict("os.environ", {"BCCH_API_USER": "secreto@ejemplo.cl"}, clear=True):
@@ -239,7 +259,7 @@ class BuscarYObtenerSerieLiveTests(unittest.TestCase):
             payload = catalogo_anual if params.get("frequency") == "ANNUAL" else catalogo_trim
             return json.dumps(payload).encode("utf-8"), payload
 
-        with patch.dict("os.environ", {"VITE_BCENTRAL_TOKEN": "tok-busqueda-secreto"}, clear=True), patch.object(
+        with patch.dict("os.environ", {"BCCH_API_TOKEN": "tok-busqueda-secreto"}, clear=True), patch.object(
             bcch_live, "descargar", side_effect=fake_descargar
         ):
             # Consulta con tilde y minúsculas
@@ -427,7 +447,7 @@ class EstructuraAysenLiveTests(unittest.TestCase):
 
         with TemporaryDirectory() as tmp:
             cache_file = Path(tmp) / "bcch-aysen-sectorial-live.json"
-            with patch.dict("os.environ", {"VITE_BCENTRAL_TOKEN": "tok-aysen-super-secreto"}, clear=True), patch.object(
+            with patch.dict("os.environ", {"BCCH_API_TOKEN": "tok-aysen-super-secreto"}, clear=True), patch.object(
                 bcch_live, "descargar", side_effect=fake_descargar
             ):
                 resultado = bcch_live.obtener_estructura_aysen_live(
@@ -580,6 +600,86 @@ class EstructuraAysenLiveTests(unittest.TestCase):
                 [p["frequency"] for fn, p in llamadas_refresh if fn == "SearchSeries"],
                 ["ANNUAL", "QUARTERLY"],
             )
+
+    def test_respaldo_ultimo_corte_aprobado_ante_falla_en_refresh_y_cache_expirado(self):
+        llamadas: list[tuple[str, dict]] = []
+        fake_descargar = self._hacer_fake_descargar_aysen(llamadas)
+
+        with TemporaryDirectory() as tmp:
+            cache_file = Path(tmp) / "bcch-aysen-sectorial-live.json"
+            # Primero poblar un corte válido aprobado en disco
+            with patch.dict("os.environ", {"BCCH_API_TOKEN": "tok-corte-inicial"}, clear=True), patch.object(
+                bcch_live, "descargar", side_effect=fake_descargar
+            ):
+                inicial = bcch_live.obtener_estructura_aysen_live(
+                    anio_desde=2013,
+                    anio_hasta=2025,
+                    refresh=False,
+                    cache_path=cache_file,
+                )
+            self.assertTrue(cache_file.is_file())
+
+            # Caso 1: refresh=True falla con BdeApiError -> sirve último corte aprobado sin tumbar la app
+            def falla_api(*args, **kwargs):
+                raise bde_api.BdeApiError("SearchSeries: HTTP 503. token=tok-falla-secreto")
+
+            with patch.dict("os.environ", {"BCCH_API_TOKEN": "tok-falla-secreto"}, clear=True), patch.object(
+                bcch_live, "descargar", side_effect=falla_api
+            ):
+                respaldo_refresh = bcch_live.obtener_estructura_aysen_live(
+                    anio_desde=2013,
+                    anio_hasta=2025,
+                    refresh=True,
+                    cache_path=cache_file,
+                )
+
+            traza_r = respaldo_refresh["fuente_trazabilidad"]
+            self.assertTrue(traza_r["desde_cache"])
+            self.assertEqual(traza_r["estado_actualizacion"], "respaldo_ultimo_corte_aprobado")
+            self.assertIn("HTTP 503", traza_r["advertencia_actualizacion"])
+            self.assertNotIn("tok-falla-secreto", json.dumps(respaldo_refresh))
+            self.assertEqual(respaldo_refresh["resumen_pib"], inicial["resumen_pib"])
+            self.assertEqual(respaldo_refresh["actividades"], inicial["actividades"])
+
+            # Caso 2: caché expirado (>24h) y falla de red (OSError) -> sirve último corte aprobado
+            datos_viejos = json.loads(cache_file.read_text(encoding="utf-8"))
+            datos_viejos["fuente_trazabilidad"]["extraido_en"] = (
+                datetime.now(timezone.utc) - timedelta(hours=30)
+            ).isoformat(timespec="seconds")
+            cache_file.write_text(json.dumps(datos_viejos), encoding="utf-8")
+
+            def falla_red(*args, **kwargs):
+                raise OSError("conexion interrumpida")
+
+            with patch.dict("os.environ", {"BCCH_API_TOKEN": "tok-falla-red"}, clear=True), patch.object(
+                bcch_live, "descargar", side_effect=falla_red
+            ):
+                respaldo_expirado = bcch_live.obtener_estructura_aysen_live(
+                    anio_desde=2013,
+                    anio_hasta=2025,
+                    refresh=False,
+                    cache_path=cache_file,
+                )
+
+            traza_e = respaldo_expirado["fuente_trazabilidad"]
+            self.assertTrue(traza_e["desde_cache"])
+            self.assertEqual(traza_e["estado_actualizacion"], "respaldo_ultimo_corte_aprobado")
+            self.assertTrue(traza_e["advertencia_actualizacion"])
+            self.assertNotIn("tok-falla-red", json.dumps(respaldo_expirado))
+            self.assertEqual(respaldo_expirado["resumen_pib"], inicial["resumen_pib"])
+
+            # Caso 3: si NO existe caché previo en disco, el error se propaga normalmente
+            cache_inexistente = Path(tmp) / "no-existe.json"
+            with patch.dict("os.environ", {"BCCH_API_TOKEN": "tok-sin-cache"}, clear=True), patch.object(
+                bcch_live, "descargar", side_effect=falla_api
+            ):
+                with self.assertRaises(bde_api.BdeApiError):
+                    bcch_live.obtener_estructura_aysen_live(
+                        anio_desde=2013,
+                        anio_hasta=2025,
+                        refresh=False,
+                        cache_path=cache_inexistente,
+                    )
 
 
 if __name__ == "__main__":

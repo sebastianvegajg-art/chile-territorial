@@ -1,0 +1,21 @@
+# Auditoría técnica inmediata — Inicio de Fase 2
+
+Fecha de auditoría: 24 de noviembre de 2026. Rama base auditada: `fase1/integracion-oficial` (commit `72d9060`, [PR #11](https://github.com/sebastianvegajg-art/chile-territorial/pull/11) abierto contra `main`). Rama de estabilización y Fase 2: `fase2/estructura-y-auditoria`.
+
+## Matriz de verificación (Sección 12 del mandato complementario)
+
+| Control auditado | Hallazgo inicial | Acción correctiva / evidencia en Fase 2 | Estado |
+|---|---|---|---|
+| PR #11 y estado de ramas | PR #11 abierto en `72d9060`; `main` intacto en `v0.1.0` | Se preservó PR #11 sin modificarlo ni hacer merge a `main`; se abrió rama independiente `fase2/estructura-y-auditoria` | Conforme |
+| Reproducibilidad de las 111 pruebas | 111 pruebas activas aprobadas + 2 de PostgreSQL omitidas sin Docker | Suite ampliada y re-ejecutada de extremo a extremo tras los cambios de Fase 2 | Conforme |
+| Cobertura oficial 855/871 | 871 filas publicables (2013–2025): 442 niveles, 205 crecimientos disponibles (incluido Chile 2013 vía nivel auxiliar 2012), 16 crecimientos 2013 faltantes explícitos, 208 participaciones | Verificada correspondencia exacta con `contracts/pib-datos.schema.json`, `db/migrations/001_pib.sql` y `apps/api/lote_oficial.py` | Conforme |
+| Distinción niveles vs métricas derivadas | Niveles (`oficial`) y derivadas (`crecimiento`, `participacion`, `acumulado`, `indice`) con `formula_version` e `insumos` | Preservada en API, CSV, HTML autónomo y nuevas vistas sectorial y per cápita | Conforme |
+| Correspondencia miles de millones ↔ millones CLP | BCCh BDE entrega miles de millones CLP; normalización exacta `× 1000` con `Decimal(34)` a `millones CLP` | 0 millones de diferencia máxima al redondear los 442 niveles API frente a los cuadros públicos HTML | Conforme |
+| Denominador HHI e indicadores sectoriales | HHI calculado sobre suma de actividades nominales (`VAB` a precios corrientes) en escala `0–10.000`; prohibición de valoración real encadenada | Documentada explícitamente la diferencia contable `PIB − VAB` por impuestos sobre los productos y el perímetro regionalizado (16 regiones) para LQ y Krugman | Conforme |
+| Clasificación de subtítulos presupuestarios | `dipres_ckan.py` separa `21–26` (corriente), `29–31` (inversión), `33` (transferencias de capital) y `01–15` (ingresos/financiamiento) | Verificada exclusión estricta de ingresos del total de gasto y no confusión entre Subtítulo 33 y Subtítulo 31 | Conforme |
+| Comparabilidad por meses equivalentes | 2025 cubre cierre diciembre (12 meses) y 2026 cubre ejecución a agosto (8 meses) | Añadido `mes_corte`, `es_cierre_anual` y `advertencia_comparabilidad_meses` en `dipres_ckan.py` y en `PoliticalView.tsx` | Corregido |
+| Multiplicadores del simulador explícitamente hipotéticos | Simulador rotulado como escenario paramétrico | Reforzada etiqueta explícita de multiplicadores hipotéticos y aclaración de que opera sobre **Valor Agregado de Administración Pública (BCCh)** y no sobre presupuesto DIPRES | Corregido |
+| Distinción gasto público vs VA Administración Pública vs empleo público | Podía interpretarse de forma ambigua en la vista política | Separación explícita en `PoliticalView.tsx`, `/api/v1/cruces/resumen` (Matriz de Dependencia Estatal) y Laboratorio de investigación | Corregido |
+| Eliminación de alias públicos de credenciales (`VITE_*`, `NEXT_PUBLIC_*`) | `bcch_live.py`, `conectores.py`, `bcchService.ts` y `PoliticalView.tsx` aceptaban o mencionaban `VITE_BCENTRAL_TOKEN` / `NEXT_PUBLIC_BCENTRAL_TOKEN` | **Eliminados completamente** (ADR-008); solo se aceptan `BCCH_API_TOKEN` o `BCCH_API_USER`/`BCCH_API_PASS` en entorno/archivo `.env` del servidor, con prueba automatizada de rechazo | Corregido |
+| Ausencia de secretos en logs, exportaciones y HTML | Escaneo directo sobre `Chile_Territorial_Oficial.html` y exportaciones | `0` fugas de credenciales detectadas (`HTML_SECRET_LEAKS: 0`) | Conforme |
+| Respaldo del último corte aprobado ante fallas | Si fallaba un refresh en vivo en `bcch_live.py` o `dipres_ckan.py` se devolvía error HTTP 502 incluso con caché válida previa | Implementado fallback automático al último corte válido en disco con bandera `estado_actualizacion: "respaldo_ultimo_corte_aprobado"` y advertencia visible | Corregido |

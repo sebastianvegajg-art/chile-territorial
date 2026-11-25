@@ -120,6 +120,8 @@ export interface EstructuraAysenResponse {
   fuente_trazabilidad: FuenteTrazabilidad
   actualizado_en?: string | null
   extraido_en?: string | null
+  estado_actualizacion?: string | null
+  advertencia_respaldo?: string | null
 }
 
 export interface BcchSearchItem {
@@ -220,7 +222,7 @@ export async function requestApiJson<T>(
           : null
       throw new ApiServiceError(
         serverMsg ||
-          'Falta configurar la credencial oficial del Banco Central de Chile. Define BCCH_API_TOKEN (o VITE_BCENTRAL_TOKEN) en el archivo .env local del servidor backend; las credenciales nunca se exponen al navegador.',
+          'Falta configurar la credencial oficial del Banco Central de Chile. Define BCCH_API_TOKEN (o BCCH_API_USER y BCCH_API_PASS) en el archivo .env local del servidor backend; el frontend jamás recibe credenciales.',
         response.status,
         'falta_token_bcch',
         record ?? undefined,
@@ -454,6 +456,18 @@ export async function fetchAysenEstructura(
     fuente_trazabilidad: fuente,
     actualizado_en: typeof raw.actualizado_en === 'string' ? raw.actualizado_en : fuente.actualizado_en,
     extraido_en: typeof raw.extraido_en === 'string' ? raw.extraido_en : fuente.extraido_en,
+    estado_actualizacion:
+      typeof raw.estado_actualizacion === 'string'
+        ? raw.estado_actualizacion
+        : typeof asRecord(raw.fuente_trazabilidad)?.estado_actualizacion === 'string'
+          ? String(asRecord(raw.fuente_trazabilidad)!.estado_actualizacion)
+          : null,
+    advertencia_respaldo:
+      typeof raw.advertencia_respaldo === 'string'
+        ? raw.advertencia_respaldo
+        : typeof raw.advertencia === 'string'
+          ? raw.advertencia
+          : null,
   }
 }
 

@@ -1,0 +1,29 @@
+# Configuración de despliegue público en Netlify (Frontend React/Vite + API serverless oficial)
+# Si posteriormente despliegas el backend FastAPI en Render/Railway, basta con definir la
+# variable de entorno BACKEND_API_URL=https://<tu-servicio>.onrender.com en Netlify para
+# que la función /api/v1/* actúe como proxy en vivo sin cambios de código.
+
+[build]
+  command = "npm --prefix apps/web ci && npm --prefix apps/web run build"
+  publish = "apps/web/dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[functions]
+  node_bundler = "esbuild"
+  included_files = ["netlify/functions/data/**"]
+
+# Fallback SPA para navegación web
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
