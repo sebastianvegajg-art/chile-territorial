@@ -25,6 +25,8 @@ import { importSinimFile, normalizeSinimErrors, sinimTemplateUrl } from './servi
 import type { SinimErrorFila } from './services/sinimService'
 import { MiMinutaPanel, MinutaSheet } from './minuta/MiMinutaPanel'
 import type { MinutaModalMode } from './minuta/MiMinutaPanel'
+import { PdzeView } from './PdzeView'
+import { findPdzeByBip, isProyectoPdze } from './data/pdzeAysen2026'
 import {
   PROYECTO_CATEGORIAS,
   ProyectosBillboardStrip,
@@ -49,7 +51,7 @@ import {
 } from './minuta/minutaModel'
 import type { MinutaCifra, MinutaDraft, MinutaObraEjemplo } from './minuta/minutaModel'
 
-type TabId = 'resumen' | 'economia' | 'presupuestos' | 'proyectos'
+type TabId = 'resumen' | 'economia' | 'presupuestos' | 'proyectos' | 'pdze'
 type EconomiaChartView = 'crecimiento' | 'participacion' | 'actividades'
 type BilleteraFiltro = 'todas' | 'regional' | 'municipal' | 'nacional_en_region' | 'nacional'
 
@@ -58,6 +60,7 @@ const TABS: readonly { id: TabId; label: string }[] = [
   { id: 'economia', label: 'Economía' },
   { id: 'presupuestos', label: 'Presupuestos' },
   { id: 'proyectos', label: 'Proyectos' },
+  { id: 'pdze', label: 'PDZE 2026–2035' },
 ] as const
 
 const QUICK_DELTAS = [-15, -10, 0, 10, 15] as const
@@ -1021,6 +1024,7 @@ function ProyectoFicha({
   proyecto,
   anio,
   onBack,
+  onOpenPdze,
   isObraSaved,
   isPagoSaved,
   onToggleObraEjemplo,
@@ -1029,11 +1033,13 @@ function ProyectoFicha({
   proyecto: ProyectoObra
   anio: number
   onBack: () => void
+  onOpenPdze: () => void
   isObraSaved: boolean
   isPagoSaved: boolean
   onToggleObraEjemplo: (obra: MinutaObraEjemplo) => void
   onTogglePagoCifra: (cifra: MinutaCifra) => void
 }) {
+  const pdzeInfo = findPdzeByBip(proyecto.codigo_bip)
   const radioOneLiner =
     proyecto.frase_radial ||
     `Obra a cargo de ${proyecto.institucion}${proyecto.administracion_origen ? ` (contratada en la gestión ${proyecto.administracion_origen})` : ''}: durante ${anio} registró pagos por ${fmtMillions(proyecto.pagado_anio_millones)}.`
@@ -1044,10 +1050,27 @@ function ProyectoFicha({
         <button type="button" className="secondary-btn" onClick={onBack}>
           ← Volver a la lista
         </button>
-        <span className={`aysen-arrastre-badge is-${proyecto.clasificacion_arrastre}`}>
-          {proyecto.etiqueta_arrastre}
-        </span>
+        <div className="pdze-item-badges">
+          {pdzeInfo && <span className="pdze-tag-pill">PDZE 2026–2035</span>}
+          <span className={`aysen-arrastre-badge is-${proyecto.clasificacion_arrastre}`}>
+            {proyecto.etiqueta_arrastre}
+          </span>
+        </div>
       </div>
+
+      {pdzeInfo && (
+        <aside className="pdze-ficha-banner" aria-label="Iniciativa incluida en el PDZE 2026-2035">
+          <div>
+            <strong>Parte del Plan de Desarrollo de Zonas Extremas (PDZE 2026–2035)</strong>
+            <p>
+              Inversión comprometida en cartera PDZE: <strong>{fmtMillions(pdzeInfo.monto_total_millones)}</strong> · Horizonte {pdzeInfo.anio_inicio}–{pdzeInfo.anio_termino} · Etapas: {pdzeInfo.etapas.map(e => `${e.etapa} (${e.anio_inicio}–${e.anio_termino})`).join(' + ')}.
+            </p>
+          </div>
+          <button type="button" className="secondary-btn" onClick={onOpenPdze}>
+            Ver pestaña PDZE →
+          </button>
+        </aside>
+      )}
 
       <div className="aysen-dossier-head">
         <div className="aysen-dossier-meta">
@@ -1213,6 +1236,7 @@ export function PoliticalView() {
   const [institucionFiltro, setInstitucionFiltro] = useState<string>('')
   const [categoriaFiltro, setCategoriaFiltro] = useState<ProyectoCategoriaId | ''>('')
   const [origenFiltro, setOrigenFiltro] = useState<'todos' | 'arrastre' | 'nuevo'>('todos')
+  const [soloPdze, setSoloPdze] = useState<boolean>(false)
   const [ordenProyectos, setOrdenProyectos] = useState<'pagado' | 'costo' | 'nombre'>('pagado')
   const [searchInput, setSearchInput] = useState<string>('')
   const [appliedSearch, setAppliedSearch] = useState<string>('')
@@ -1327,6 +1351,7 @@ export function PoliticalView() {
     economia: null,
     presupuestos: null,
     proyectos: null,
+    pdze: null,
   })
 
   // Sincronización amable de comuna entre Presupuestos y Proyectos
@@ -1527,11 +1552,17 @@ export function PoliticalView() {
     return counts
   }, [proyectosState.data])
 
+  const totalPdzeEnProyectos = useMemo(
+    () => (proyectosState.data?.proyectos ?? []).filter(p => isProyectoPdze(p.codigo_bip)).length,
+    [proyectosState.data],
+  )
+
   const proyectosVisibles = useMemo(() => {
     const base = proyectosState.data?.proyectos ?? []
     const filtered = base.filter(p => {
       if (origenFiltro !== 'todos' && p.clasificacion_arrastre !== origenFiltro) return false
       if (categoriaFiltro && classifyProyecto(p).id !== categoriaFiltro) return false
+      if (soloPdze && !isProyectoPdze(p.codigo_bip)) return false
       return true
     })
     return [...filtered].sort((a, b) => {
@@ -1543,7 +1574,7 @@ export function PoliticalView() {
       }
       return (b.pagado_anio_millones ?? -1) - (a.pagado_anio_millones ?? -1)
     })
-  }, [proyectosState.data, origenFiltro, categoriaFiltro, ordenProyectos])
+  }, [proyectosState.data, origenFiltro, categoriaFiltro, soloPdze, ordenProyectos])
 
   // Handlers SINIM discreto en Presupuestos
   function handleSinimFileChange(_event: ChangeEvent<HTMLInputElement>) {
@@ -2659,7 +2690,7 @@ export function PoliticalView() {
               <button type="submit" className="primary">
                 Buscar
               </button>
-              {(appliedSearch || institucionFiltro || comunaProyectos || categoriaFiltro || origenFiltro !== 'todos') && (
+              {(appliedSearch || institucionFiltro || comunaProyectos || categoriaFiltro || origenFiltro !== 'todos' || soloPdze) && (
                 <button
                   type="button"
                   className="secondary-btn"
@@ -2670,6 +2701,7 @@ export function PoliticalView() {
                     setComunaProyectos('')
                     setCategoriaFiltro('')
                     setOrigenFiltro('todos')
+                    setSoloPdze(false)
                     setSelectedProjectId(null)
                   }}
                 >
@@ -2835,6 +2867,10 @@ export function PoliticalView() {
                   proyecto={selectedProject}
                   anio={anio}
                   onBack={() => setSelectedProjectId(null)}
+                  onOpenPdze={() => {
+                    setSelectedProjectId(null)
+                    switchTab('pdze')
+                  }}
                   isObraSaved={minutaDraft.obraEjemplo?.id === `obra-${selectedProject.id}-${anio}`}
                   isPagoSaved={isCifraInMinuta(`wiz-obra-pagado-${selectedProject.id}-${anio}`)}
                   onToggleObraEjemplo={handleToggleMinutaObra}
@@ -2850,7 +2886,7 @@ export function PoliticalView() {
                           ? ` de ${proyectosState.data.proyectos.length}`
                           : ''})
                       </h3>
-                      <span className="subtle">Filtra por área, origen o institución y toca cualquier obra para ver su ficha completa.</span>
+                      <span className="subtle">Filtra por área, origen, PDZE o institución y toca cualquier obra para ver su ficha completa.</span>
                     </div>
 
                     <label className="proy-sort-field">
@@ -2866,15 +2902,26 @@ export function PoliticalView() {
                     </label>
                   </div>
 
-                  {/* Clasificación rápida por área temática */}
-                  <div className="proy-category-pills" role="group" aria-label="Filtrar obras por área temática">
+                  {/* Clasificación rápida por área temática + etiqueta PDZE */}
+                  <div className="proy-category-pills" role="group" aria-label="Filtrar obras por área temática o PDZE">
                     <button
                       type="button"
-                      className={`proy-cat-pill${categoriaFiltro === '' ? ' is-active' : ''}`}
-                      aria-pressed={categoriaFiltro === ''}
-                      onClick={() => setCategoriaFiltro('')}
+                      className={`proy-cat-pill${categoriaFiltro === '' && !soloPdze ? ' is-active' : ''}`}
+                      aria-pressed={categoriaFiltro === '' && !soloPdze}
+                      onClick={() => {
+                        setCategoriaFiltro('')
+                        setSoloPdze(false)
+                      }}
                     >
                       Todas ({proyectosState.data.proyectos.length})
+                    </button>
+                    <button
+                      type="button"
+                      className={`proy-cat-pill is-pdze-pill${soloPdze ? ' is-active' : ''}`}
+                      aria-pressed={soloPdze}
+                      onClick={() => setSoloPdze(prev => !prev)}
+                    >
+                      ★ PDZE ({totalPdzeEnProyectos})
                     </button>
                     {PROYECTO_CATEGORIAS.map(cat => {
                       const count = conteoPorCategoria[cat.id] ?? 0
@@ -2895,9 +2942,14 @@ export function PoliticalView() {
                     })}
                   </div>
 
-                  {(categoriaFiltro || origenFiltro !== 'todos' || institucionFiltro) && (
+                  {(categoriaFiltro || origenFiltro !== 'todos' || institucionFiltro || soloPdze) && (
                     <div className="proy-active-filters" role="status">
                       <span>Filtros activos:</span>
+                      {soloPdze && (
+                        <span className="proy-active-chip">
+                          Programa: <strong>PDZE 2026–2035</strong>
+                        </span>
+                      )}
                       {categoriaFiltro && (
                         <span className="proy-active-chip">
                           Área: <strong>{PROYECTO_CATEGORIAS.find(c => c.id === categoriaFiltro)?.label}</strong>
@@ -2920,6 +2972,7 @@ export function PoliticalView() {
                           setCategoriaFiltro('')
                           setOrigenFiltro('todos')
                           setInstitucionFiltro('')
+                          setSoloPdze(false)
                         }}
                       >
                         Ver todas ✕
@@ -2935,6 +2988,7 @@ export function PoliticalView() {
                     <ul className="aysen-project-list">
                       {proyectosVisibles.map(proy => {
                         const cat = classifyProyecto(proy)
+                        const pdzeMatch = findPdzeByBip(proy.codigo_bip)
                         const originLabel =
                           proy.clasificacion_arrastre === 'arrastre'
                             ? 'Venía de antes'
@@ -2945,10 +2999,15 @@ export function PoliticalView() {
                           <li key={proy.id}>
                             <button
                               type="button"
-                              className="aysen-project-row"
+                              className={`aysen-project-row${pdzeMatch ? ' is-pdze-row' : ''}`}
                               onClick={() => setSelectedProjectId(proy.id)}
                             >
                               <div className="aysen-project-row-top">
+                                {pdzeMatch && (
+                                  <span className="pdze-tag-pill" title={`Incluida en PDZE 2026–2035 (${pdzeMatch.anio_inicio}–${pdzeMatch.anio_termino})`}>
+                                    PDZE
+                                  </span>
+                                )}
                                 <span
                                   className="proy-row-cat-tag"
                                   style={{ background: cat.softBg, color: cat.color }}
@@ -3025,6 +3084,13 @@ export function PoliticalView() {
           )}
         </section>
       )}
+      {activeTab === 'pdze' && (
+        <PdzeView
+          isCifraInMinuta={isCifraInMinuta}
+          onToggleMinutaCifra={handleToggleMinutaCifra}
+        />
+      )}
+
       {/* Notificación breve al guardar desde tarjetas */}
       {minutaToast && (
         <div className="minuta-toast no-print" role="status" aria-live="polite">
