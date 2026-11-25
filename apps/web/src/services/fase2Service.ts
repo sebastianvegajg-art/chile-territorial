@@ -796,6 +796,55 @@ export async function fetchCrucesResumen(signal?: AbortSignal): Promise<CrucesRe
 }
 
 /* ============================================================================
+   3B. MERCADO LABORAL (INE ENE vía BCCh SI3) Y TEJIDO EMPRESARIAL SII
+   GET /api/v1/laboral/resumen
+============================================================================ */
+
+export interface SiiComunaAysenItem {
+  cut: string
+  comuna: string
+  anio: number
+  empresas: number | null
+  ventas_uf: string | null
+  trabajadores_dependientes_informados: number | null
+  trabajadores_ponderados: string | null
+  renta_neta_uf: string | null
+  honorarios_trabajadores: number | null
+  honorarios_uf: string | null
+}
+
+export interface LaboralResumenResponse {
+  disponible: boolean
+  anio_ene: number
+  anio_sii: number
+  ine_ene: Array<Record<string, unknown>>
+  sii_regiones: Array<Record<string, unknown>>
+  sii_comunas_aysen: SiiComunaAysenItem[]
+  nota_metodologica_separacion: string | null
+}
+
+export async function fetchLaboralResumen(
+  anio?: number,
+  territorio?: string,
+  signal?: AbortSignal,
+): Promise<LaboralResumenResponse> {
+  const params = new URLSearchParams()
+  if (anio !== undefined) params.set('anio', String(anio))
+  if (territorio && territorio.trim()) params.set('territorio', territorio.trim())
+  const qs = params.toString()
+  const raw = await requestApiJson<Record<string, unknown>>(`/laboral/resumen${qs ? `?${qs}` : ''}`, { signal })
+  return {
+    disponible: Boolean(raw.disponible),
+    anio_ene: Number(raw.anio_ene ?? 2025),
+    anio_sii: Number(raw.anio_sii ?? 2025),
+    ine_ene: Array.isArray(raw.ine_ene) ? (raw.ine_ene as Array<Record<string, unknown>>) : [],
+    sii_regiones: Array.isArray(raw.sii_regiones) ? (raw.sii_regiones as Array<Record<string, unknown>>) : [],
+    sii_comunas_aysen: Array.isArray(raw.sii_comunas_aysen) ? (raw.sii_comunas_aysen as SiiComunaAysenItem[]) : [],
+    nota_metodologica_separacion: asString(raw.nota_metodologica_separacion),
+  }
+}
+
+/* ============================================================================
    4. LABORATORIO DE INVESTIGACIÓN Y DOSSIERS (SOLO LECTURA · 10 PASOS)
    POST /api/v1/laboratorio/consultar
 ============================================================================ */

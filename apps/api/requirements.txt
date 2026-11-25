@@ -3,3 +3,4 @@ jsonschema[format]>=4.20,<5
 uvicorn>=0.30,<1
 psycopg[binary]>=3.2,<4
 beautifulsoup4>=4.12,<5
+pyxlsb>=1.0.10,<2

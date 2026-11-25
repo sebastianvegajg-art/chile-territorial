@@ -5,11 +5,13 @@ import {
   REGIONES_CHILE,
   consultarLaboratorio,
   fetchCrucesResumen,
+  fetchLaboralResumen,
   triggerFileDownload,
 } from './services/fase2Service'
 import type {
   CrucesResumenResponse,
   LaboratorioConsultaResponse,
+  LaboralResumenResponse,
 } from './services/fase2Service'
 
 const PREGUNTAS_SUGERIDAS: readonly {
@@ -239,6 +241,7 @@ export function LaboratorioView() {
   }>({ loading: false, data: null, error: null })
 
   const [cruces, setCruces] = useState<CrucesResumenResponse | null>(null)
+  const [laboral, setLaboral] = useState<LaboralResumenResponse | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -248,6 +251,13 @@ export function LaboratorioView() {
       })
       .catch(() => {
         // Silencioso: la tarjeta complementaria de cruces es informativa.
+      })
+    fetchLaboralResumen(2025, undefined, controller.signal)
+      .then(res => {
+        if (!controller.signal.aborted && res.disponible) setLaboral(res)
+      })
+      .catch(() => {
+        // Silencioso si el corte laboral aún no está publicado.
       })
     return () => controller.abort()
   }, [])
@@ -637,6 +647,122 @@ export function LaboratorioView() {
           </footer>
         </article>
       )}
+
+      {/* Matriz de Dependencia Estatal (3 planos independientes) + Mercado Laboral y SII */}
+      {cruces && cruces.dependencia_estatal && (() => {
+        const dep = cruces.dependencia_estatal as Record<string, Record<string, unknown>>
+        const adm = dep.actividad_economica_administracion_publica ?? {}
+        const gasto = dep.gasto_publico_presupuestario ?? {}
+        const emp = dep.empleo_publico ?? {}
+        const eneAy = (emp.ine_ene_aysen ?? {}) as Record<string, unknown>
+        const siiAy = (emp.sii_aysen_rubro_o ?? {}) as Record<string, unknown>
+        const sinimMun = (gasto.sinim_municipal ?? {}) as Record<string, unknown>
+        const fmtN = (v: unknown, dec = 1) => {
+          const n = Number(v)
+          return Number.isFinite(n)
+            ? n.toLocaleString('es-CL', { minimumFractionDigits: dec, maximumFractionDigits: dec })
+            : 'Sin dato'
+        }
+        return (
+          <section className="panel" aria-label="Matriz de Dependencia Estatal de Aysén">
+            <div className="panel-head">
+              <div>
+                <p className="eyebrow">Matriz de Dependencia Estatal · 3 planos no sumables (Aysén)</p>
+                <h2>Presencia del Estado: PIB, Presupuesto y Empleo Formal</h2>
+              </div>
+              <span className="status-badge is-official">BCCh · DIPRES · SINIM · INE · SII</span>
+            </div>
+            <div className="wallets-grid">
+              <article className="wallet-card">
+                <div className="wallet-head">
+                  <span className="wallet-num">Plano (a)</span>
+                  <span className="status-badge is-official">BCCh CCNN {String(adm.anio ?? 2025)}</span>
+                </div>
+                <h4>Actividad Administración Pública</h4>
+                <p className="kpi-value">{fmtN(adm.participacion_pib_nominal_pct, 2)}%</p>
+                <p className="subtle">
+                  del PIB nominal regional (${fmtN(adm.valor_millones_clp, 1)} MM). Mide valor agregado de la rama en Cuentas Nacionales; no equivale a gasto fiscal ni empleo.
+                </p>
+              </article>
+
+              <article className="wallet-card">
+                <div className="wallet-head">
+                  <span className="wallet-num">Plano (b)</span>
+                  <span className="status-badge is-official">DIPRES + SINIM {String(gasto.anio ?? 2025)}</span>
+                </div>
+                <h4>Gasto Público Presupuestario</h4>
+                <p className="kpi-value">${fmtN(gasto.gasto_directo_gobierno_central_millones, 0)} MM</p>
+                <p className="subtle">
+                  Gobierno Central en Aysén ({fmtN(gasto.ratio_gasto_directo_sobre_pib_nominal_pct, 1)}% ref. PIB nominal) + GORE ${fmtN(gasto.financiamiento_gore_p31_millones, 0)} MM
+                  {sinimMun.cargado ? ` + ${String(sinimMun.comunas_cargadas)}/10 municipios SINIM ($${fmtN(sinimMun.total_gasto_devengado_millones, 0)} MM).` : '.'}
+                </p>
+              </article>
+
+              <article className="wallet-card">
+                <div className="wallet-head">
+                  <span className="wallet-num">Plano (c)</span>
+                  <span className="status-badge is-official">
+                    {emp.disponible ? `INE ENE + SII ${String(emp.anio_sii ?? 2025)}` : 'Pendiente'}
+                  </span>
+                </div>
+                <h4>Empleo, Productividad y Masa Salarial</h4>
+                {emp.disponible ? (
+                  <>
+                    <p className="kpi-value">{fmtN(siiAy.participacion_rubro_o_trabajadores_pct, 2)}% / {fmtN(siiAy.participacion_rubro_o_masa_salarial_pct, 2)}%</p>
+                    <p className="subtle">
+                      <strong>SII Rubro O (Adm. Pública):</strong> {fmtN(siiAy.participacion_rubro_o_trabajadores_pct, 2)}% de los {fmtN(siiAy.trabajadores_ponderados_totales_aysen, 0)} trabajadores dependientes ponderados y {fmtN(siiAy.participacion_rubro_o_masa_salarial_pct, 2)}% de la masa salarial formal en UF (domicilio tributario en Aysén).{' '}
+                      <strong>INE ENE ({String(emp.anio_ene ?? 2025)}):</strong> {fmtN(eneAy.ocupados_personas, 0)} ocupados, {fmtN(eneAy.tasa_desocupacion_pct, 2)}% desocupación y productividad real ${fmtN(eneAy.productividad_laboral_real_clp, 0)} CLP/ocup. (#{String(eneAy.ranking_productividad_regional ?? '—')} en Chile).
+                    </p>
+                  </>
+                ) : (
+                  <p className="subtle">{String(emp.motivo ?? 'Sin dato laboral disponible.')}</p>
+                )}
+              </article>
+            </div>
+            {laboral && laboral.sii_comunas_aysen.length > 0 && (
+              <details className="bcch-explorer" style={{ marginTop: '1rem' }}>
+                <summary>
+                  <span>
+                    <strong>Tejido empresarial y empleo formal SII — {laboral.sii_comunas_aysen.length} comunas de Aysén ({laboral.anio_sii})</strong>
+                    <small className="subtle"> Empresas, ventas (UF), trabajadores dependientes ponderados y masa salarial formal por domicilio tributario del empleador (SII).</small>
+                  </span>
+                </summary>
+                <div className="explorer-body">
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Comuna (CUT)</th>
+                          <th>Empresas</th>
+                          <th>Ventas anuales (UF)</th>
+                          <th>Trab. dependientes pond.</th>
+                          <th>Masa salarial formal (UF)</th>
+                          <th>Honorarios (pers.)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {laboral.sii_comunas_aysen.map(c => (
+                          <tr key={c.cut}>
+                            <th scope="row">{c.comuna} <span className="mono subtle">({c.cut})</span></th>
+                            <td>{c.empresas !== null ? c.empresas.toLocaleString('es-CL') : 'Sin dato'}</td>
+                            <td>{c.ventas_uf ? fmtN(c.ventas_uf, 0) : 'Secreto est. (*)'}</td>
+                            <td>{c.trabajadores_ponderados ? fmtN(c.trabajadores_ponderados, 1) : 'Sin dato'}</td>
+                            <td>{c.renta_neta_uf ? fmtN(c.renta_neta_uf, 0) : 'Secreto est. (*)'}</td>
+                            <td>{c.honorarios_trabajadores !== null ? c.honorarios_trabajadores.toLocaleString('es-CL') : 'Sin dato'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {laboral.nota_metodologica_separacion && (
+                    <p className="subtle" style={{ marginTop: '0.75rem' }}>{laboral.nota_metodologica_separacion}</p>
+                  )}
+                </div>
+              </details>
+            )}
+          </section>
+        )
+      })()}
 
       {/* Bloque informativo de cruces analíticos si /api/v1/cruces/resumen está disponible */}
       {cruces && cruces.cruces.length > 0 && (

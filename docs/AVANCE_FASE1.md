@@ -1,5 +1,13 @@
 # Avance de la primera fase
 
+## Ola 3 — Mercado laboral (INE ENE vía BCCh SI3), tejido empresarial SII y Matriz de Dependencia Estatal completa (25 de noviembre de 2026)
+
+Se cerró el **Plano (c)** de la **Matriz de Dependencia Estatal** y se incorporaron indicadores laborales, de productividad y de tejido empresarial comunal usando exclusivamente fuentes oficiales con `Decimal(34)`:
+
+- **Extractor reproducible INE ENE + SII (`pipelines/laboral/mercado_laboral_live.py`)**: descarga viva y reproducción bit-a-bit con SHA-256 de **35 series INE ENE** desde la API oficial del Banco Central (`F049.OCU.PMT.INE9.*.M` y `F049.DES.TAS.INE9.*.M` para **Chile y las 16 regiones**, `2013–septiembre 2026`, más ocupación nacional en Administración Pública `F049.OCU.PMT.INE4.39B.M`) y **3 archivos oficiales SII (`PUB_REG.xlsb`, `PUB_REG_RUBR.xlsb`, `PUB_COMU.xlsb`, `2013–2025`)** con manejo estricto del secreto estadístico (`*` → `null`, nunca `0`) y denominador regional sin supresión.
+- **Hallazgos verificados en Aysén 2025**: **59.525 ocupados** y **`4,19%`** de desocupación (INE ENE), **productividad laboral real de `$24.032.408 CLP/ocupado` (`#4` de Chile)**; en registros SII por domicilio tributario del empleador, **13.453 empresas** y **23.297,24 trabajadores dependientes ponderados**, donde el **Rubro `O` (Administración Pública y Defensa)** concentra el **`20,09%`** del empleo dependiente y el **`42,62%`** de la masa salarial formal en UF, más cobertura completa de las **10/10 comunas de Aysén** (`2013–2025`).
+- **API, Frontend y Snapshot Público**: nuevo endpoint `GET /api/v1/laboral/resumen`, actualización de `GET /api/v1/cruces/resumen` (Plano b conectado a SINIM 10/10 comunas y Plano c activo con separación metodológica ENE vs SII) y visualización de la Matriz de 3 Planos + tabla comunal SII en `LaboratorioView.tsx` (`#laboratorio`).
+
 ## Ola 2 — Proyectos ampliados 2021–2026: DIPRES Subtítulo 31 (BIP) + MOP DGOP sin doble conteo (25 de noviembre de 2026)
 
 Se amplió la pestaña **Proyectos** y la tarjeta **Arrastre** de **Resumen** más allá de los contratos MOP DGOP integrando las **Iniciativas de Inversión Pública (Subtítulo 31 / Código BIP)** desde DIPRES CKAN (`datos.gob.cl`, sin credenciales y con aritmética `Decimal(34)`):

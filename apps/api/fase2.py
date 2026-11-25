@@ -87,9 +87,18 @@ def _ruta_dipres() -> Path:
     return Path(personalizada) if personalizada else RUTA_DIPRES_AYSEN_DEFECTO
 
 
+RUTA_LABORAL_DEFECTO = RAIZ_REPO / "data" / "published" / "mercado-laboral-sii-ine.json"
+RUTA_SINIM_HISTORICO_DEFECTO = RAIZ_REPO / "data" / "published" / "sinim-aysen-historico.json"
+
+
 def _ruta_sinim() -> Path:
     personalizada = (os.getenv("CT_SINIM_PATH") or "").strip()
     return Path(personalizada) if personalizada else RUTA_SINIM_DEFECTO
+
+
+def _ruta_laboral() -> Path:
+    personalizada = (os.getenv("CT_LABORAL_PATH") or "").strip()
+    return Path(personalizada) if personalizada else RUTA_LABORAL_DEFECTO
 
 
 def _leer_json(ruta: Path) -> dict[str, Any]:
@@ -475,6 +484,26 @@ def cruces_resumen():
 
     # Plano (b) Gasto Público Presupuestario (DIPRES CKAN + SINIM)
     sinim_resumen = sinim_aysen.get("resumen") if sinim_valido and isinstance(sinim_aysen.get("resumen"), Mapping) else None
+    sinim_hist_bloque: dict[str, Any] | None = None
+    if sinim_resumen is None:
+        sinim_hist = _leer_json_opcional(RUTA_SINIM_HISTORICO_DEFECTO)
+        if isinstance(sinim_hist, Mapping) and isinstance(sinim_hist.get("por_anio"), Mapping):
+            yr_sinim = str(anio_ref) if str(anio_ref) in sinim_hist["por_anio"] else str(sinim_hist.get("ultimo_anio") or 2025)
+            coms = sinim_hist["por_anio"].get(yr_sinim)
+            if isinstance(coms, Mapping) and coms:
+                with localcontext(_CONTEXTO_DECIMAL):
+                    tot_dev = sum(
+                        (_a_decimal(c.get("gasto_total_devengado_millones")) or _CERO for c in coms.values() if isinstance(c, Mapping)),
+                        _CERO,
+                    )
+                sinim_hist_bloque = {
+                    "cargado": True,
+                    "anio": int(yr_sinim),
+                    "comunas_cargadas": len(coms),
+                    "total_gasto_devengado_millones": _fmt(tot_dev, 3),
+                    "fuente": "SINIM datos_municipales.php (10/10 comunas Aysén)",
+                }
+
     gasto_presupuestario_info: dict[str, Any] = {
         "disponible": dipres_aysen is not None,
         "estado": "parcial_sin_consolidar" if dipres_aysen is not None else "pendiente",
@@ -498,11 +527,15 @@ def cruces_resumen():
                 "total_gasto_devengado_millones": sinim_resumen.get("total_gasto_devengado_millones"),
             }
             if sinim_resumen is not None
-            else {
-                "cargado": False,
-                "estado": "pendiente_importacion",
-                "motivo": "Importación SINIM de las 10 comunas de Aysén pendiente.",
-            }
+            else (
+                sinim_hist_bloque
+                if sinim_hist_bloque is not None
+                else {
+                    "cargado": False,
+                    "estado": "pendiente_importacion",
+                    "motivo": "Importación SINIM de las 10 comunas de Aysén pendiente.",
+                }
+            )
         ),
         "resource_id_dipres": traza_dipres.get("resource_id"),
         "advertencia": (
@@ -511,17 +544,63 @@ def cruces_resumen():
         ),
     }
 
-    # Plano (c) Empleo Público (INE ENE/microdatos — pendiente)
-    empleo_publico_info: dict[str, Any] = {
-        "disponible": False,
-        "estado": "pendiente",
-        "concepto": "Participación del empleo público en la ocupación total regional",
-        "fuente_esperada": "INE · Encuesta Nacional de Empleo (ENE) / microdatos y dominios oficiales",
-        "motivo": (
-            "Pendiente de integración de microdatos/dominios representativos ENE del INE y clasificador "
-            "oficial de empleo público vs privado; nunca se infiere desde CCNN ni desde presupuesto."
-        ),
-    }
+    # Plano (c) Empleo Público y Mercado Laboral (INE ENE vía BCCh SI3 + SII Empresas Rubro O)
+    laboral_datos = _leer_json_opcional(_ruta_laboral())
+    if isinstance(laboral_datos, Mapping):
+        yr_ene = str(laboral_datos.get("ultimo_anio_ene_cerrado") or 2025)
+        yr_sii = str(laboral_datos.get("ultimo_anio_sii") or 2025)
+        ene_ay = ((laboral_datos.get("ine_ene_por_anio") or {}).get(yr_ene) or {}).get("11") or {}
+        ene_cl = ((laboral_datos.get("ine_ene_por_anio") or {}).get(yr_ene) or {}).get("CL") or {}
+        sii_ay = ((laboral_datos.get("sii_regiones_por_anio") or {}).get(yr_sii) or {}).get("11") or {}
+        com_sii_ay = (laboral_datos.get("sii_comunas_aysen_por_anio") or {}).get(yr_sii) or {}
+        empleo_publico_info: dict[str, Any] = {
+            "disponible": True,
+            "estado": "disponible_ene_y_sii_separados",
+            "concepto": (
+                "Mercado laboral residente (INE ENE vía BCCh SI3) y empleo dependiente / masa salarial "
+                "formal en Rubro O — Administración Pública y Defensa (SII Estadísticas de Empresas)"
+            ),
+            "territorio": "11",
+            "territorio_nombre": "Aysén del General Carlos Ibáñez del Campo",
+            "anio_ene": int(yr_ene),
+            "anio_sii": int(yr_sii),
+            "ine_ene_aysen": {
+                "ocupados_miles": ene_ay.get("ocupados_miles"),
+                "ocupados_personas": ene_ay.get("ocupados_personas"),
+                "tasa_desocupacion_pct": ene_ay.get("tasa_desocupacion_pct"),
+                "productividad_laboral_real_clp": ene_ay.get("productividad_laboral_real_clp"),
+                "ranking_productividad_regional": ene_ay.get("ranking_productividad_regional"),
+                "serie_ocupados": ene_ay.get("serie_ocupados"),
+                "serie_desocupacion": ene_ay.get("serie_desocupacion"),
+            },
+            "ine_ene_nacional_adm_publica": {
+                "ocupados_adm_publica_miles": ene_cl.get("ocupados_adm_publica_miles"),
+                "participacion_adm_publica_ene_nacional_pct": ene_cl.get("participacion_adm_publica_ene_nacional_pct"),
+                "serie_adm_publica": ene_cl.get("serie_adm_publica"),
+            },
+            "sii_aysen_rubro_o": {
+                "empresas_totales_aysen": sii_ay.get("empresas"),
+                "trabajadores_ponderados_totales_aysen": sii_ay.get("trabajadores_ponderados"),
+                "renta_neta_total_uf_aysen": sii_ay.get("renta_neta_uf"),
+                "rubro_o_trabajadores_ponderados": (sii_ay.get("rubro_o_adm_publica") or {}).get("trabajadores_ponderados"),
+                "rubro_o_renta_neta_uf": (sii_ay.get("rubro_o_adm_publica") or {}).get("renta_neta_uf"),
+                "participacion_rubro_o_trabajadores_pct": sii_ay.get("participacion_rubro_o_trabajadores_pct"),
+                "participacion_rubro_o_masa_salarial_pct": sii_ay.get("participacion_rubro_o_masa_salarial_pct"),
+                "comunas_aysen_disponibles": len(com_sii_ay),
+            },
+            "advertencia": laboral_datos.get("nota_metodologica_separacion"),
+        }
+    else:
+        empleo_publico_info = {
+            "disponible": False,
+            "estado": "pendiente",
+            "concepto": "Participación del empleo público en la ocupación total regional",
+            "fuente_esperada": "INE · Encuesta Nacional de Empleo (ENE) y SII Estadísticas de Empresas",
+            "motivo": (
+                "Pendiente de extracción de data/published/mercado-laboral-sii-ine.json (INE ENE + SII); "
+                "nunca se infiere desde CCNN ni desde presupuesto."
+            ),
+        }
 
     # Estado auditable de los 4 cruces analíticos
     metricas_por_cruce: dict[str, dict[str, Any]] = {
@@ -629,9 +708,52 @@ def cruces_resumen():
             "sectorial_aysen_disponible": sectorial_aysen is not None,
             "poblacion_ine_disponible": poblacion_ine is not None,
             "dipres_aysen_disponible": dipres_aysen is not None,
-            "sinim_aysen_cargado": sinim_valido,
+            "sinim_aysen_cargado": sinim_valido or (sinim_hist_bloque is not None),
+            "laboral_ine_sii_disponible": laboral_datos is not None,
             "solo_lectura": True,
         },
+    }
+
+
+@router.get("/laboral/resumen")
+def laboral_resumen(
+    anio: Annotated[int | None, Query(ge=2013, le=2030)] = None,
+    territorio: Annotated[str | None, Query(pattern=PATRON_TERRITORIO)] = None,
+):
+    ruta = _ruta_laboral()
+    if not ruta.is_file():
+        return {
+            "disponible": False,
+            "motivo": (
+                "El corte oficial de mercado laboral INE ENE + SII aún no se ha publicado en "
+                "data/published/mercado-laboral-sii-ine.json."
+            ),
+            "filtros": {"anio": anio, "territorio": territorio},
+        }
+    datos = _leer_json(ruta)
+    yr_ene = str(anio) if (anio is not None and str(anio) in (datos.get("ine_ene_por_anio") or {})) else str(datos.get("ultimo_anio_ene_cerrado") or 2025)
+    yr_sii = str(anio) if (anio is not None and str(anio) in (datos.get("sii_regiones_por_anio") or {})) else str(datos.get("ultimo_anio_sii") or 2025)
+
+    ene_mapa = (datos.get("ine_ene_por_anio") or {}).get(yr_ene) or {}
+    sii_mapa = (datos.get("sii_regiones_por_anio") or {}).get(yr_sii) or {}
+    com_aysen_mapa = (datos.get("sii_comunas_aysen_por_anio") or {}).get(yr_sii) or {}
+
+    if territorio is not None:
+        ene_mapa = {territorio: ene_mapa[territorio]} if territorio in ene_mapa else {}
+        sii_mapa = {territorio: sii_mapa[territorio]} if territorio in sii_mapa else {}
+
+    return {
+        "disponible": True,
+        "filtros": {"anio": anio, "territorio": territorio},
+        "anio_ene": int(yr_ene),
+        "anio_sii": int(yr_sii),
+        "anios_ene": datos.get("anios_ene") or [],
+        "anios_sii": datos.get("anios_sii") or [],
+        "ine_ene": list(ene_mapa.values()),
+        "sii_regiones": list(sii_mapa.values()),
+        "sii_comunas_aysen": [com_aysen_mapa[k] for k in sorted(com_aysen_mapa.keys())],
+        "nota_metodologica_separacion": datos.get("nota_metodologica_separacion"),
+        "fuente_trazabilidad": datos.get("fuente_trazabilidad"),
     }
 
 

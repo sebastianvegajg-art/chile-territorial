@@ -122,7 +122,12 @@ def main(argv: list[str] | None = None) -> int:
         if not _correr_modulo("pipelines.inversion.dipres_bip_live", [], "DIPRES Subt. 31 iniciativas BIP Aysén (2021–2026)"):
             fallos.append("dipres_bip_aysen")
 
-    # 4. DIPRES CKAN piloto (2025 cierre anual + 2026 en curso)
+    # 4. Mercado laboral INE ENE (BCCh SI3) + SII Estadísticas de Empresas (2013–2025)
+    if con_token and not (args.solo_faltantes and (PUB / "mercado-laboral-sii-ine.json").exists()):
+        if not _correr_modulo("pipelines.laboral.mercado_laboral_live", [], "Mercado laboral INE ENE + SII Empresas"):
+            fallos.append("mercado_laboral_sii_ine")
+
+    # 5. DIPRES CKAN piloto (2018–2026)
     if not _preparar_dipres_piloto(solo_faltantes=args.solo_faltantes):
         fallos.append("dipres_piloto")
 

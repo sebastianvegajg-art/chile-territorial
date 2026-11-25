@@ -86,6 +86,9 @@ def main() -> int:
         "2025": cruces_data,
         "2026": cruces_data,
     }
+    laboral_por_anio: dict[str, dict] = {}
+    for yr in range(2013, 2027):
+        laboral_por_anio[str(yr)] = fase2.laboral_resumen(anio=yr)
 
     snapshot = {
         "generado_desde": pub_id,
@@ -101,6 +104,7 @@ def main() -> int:
         "sectorial_regiones": sectorial_por_anio,
         "demografia_poblacion": demografia_por_anio,
         "cruces_resumen": cruces_por_anio,
+        "laboral_resumen": laboral_por_anio,
     }
 
     SALIDA.parent.mkdir(parents=True, exist_ok=True)

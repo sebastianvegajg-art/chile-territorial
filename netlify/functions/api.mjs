@@ -404,6 +404,19 @@ export default async (req) => {
     return jsonResponse(data);
   }
 
+  if (path === "/api/v1/laboral/resumen") {
+    const anio = String(url.searchParams.get("anio") || "2025");
+    const terr = (url.searchParams.get("territorio") || "").trim();
+    const base = (snap.laboral_resumen && (snap.laboral_resumen[anio] || snap.laboral_resumen["2025"])) || { disponible: false };
+    if (!terr || !base.disponible) return jsonResponse(base);
+    return jsonResponse({
+      ...base,
+      filtros: { anio: Number(anio), territorio: terr },
+      ine_ene: (base.ine_ene || []).filter((x) => x.territorio === terr),
+      sii_regiones: (base.sii_regiones || []).filter((x) => x.territorio === terr),
+    });
+  }
+
   if (path === "/api/v1/fiscal/sinim/plantilla.csv") {
     const header = "cut,comuna,anio,ingresos_totales_millones,gasto_total_devengado_millones,gasto_personal_sub21_millones,gasto_bienes_servicios_sub22_millones";
     const rows = Object.entries(COMUNAS_CUT).map(([cut, nombre]) => `${cut},${nombre},2025,,,,`);

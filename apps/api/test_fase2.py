@@ -354,11 +354,33 @@ class Fase2EndpointsTest(unittest.TestCase):
         self.assertEqual(gasto["financiamiento_gore_p31_millones"], "79897.034")
         self.assertIsNotNone(gasto["ratio_gasto_directo_sobre_pib_nominal_pct"])
 
-        # (c) Empleo público explícitamente pendiente (ENE/INE)
+        # (c) Empleo público y mercado laboral (INE ENE + SII cuando está publicado; pendiente si falta)
         empleo = matriz["empleo_publico"]
-        self.assertFalse(empleo["disponible"])
-        self.assertEqual(empleo["estado"], "pendiente")
-        self.assertIn("ENE", empleo["motivo"])
+        ruta_lab_real = RAIZ_REPO / "data" / "published" / "mercado-laboral-sii-ine.json"
+        if ruta_lab_real.is_file():
+            self.assertTrue(empleo["disponible"])
+            self.assertEqual(empleo["estado"], "disponible_ene_y_sii_separados")
+            self.assertIsNotNone(empleo["ine_ene_aysen"]["ocupados_miles"])
+            self.assertIsNotNone(empleo["sii_aysen_rubro_o"]["participacion_rubro_o_trabajadores_pct"])
+            self.assertEqual(empleo["sii_aysen_rubro_o"]["comunas_aysen_disponibles"], 10)
+            st_lab, _, cuerpo_lab = invocar_asgi(
+                self.app, "GET", "/api/v1/laboral/resumen", params={"anio": 2025, "territorio": "11"}
+            )
+            self.assertEqual(st_lab, 200)
+            lab_json = json.loads(cuerpo_lab)
+            self.assertTrue(lab_json["disponible"])
+            self.assertEqual(len(lab_json["sii_comunas_aysen"]), 10)
+        else:
+            self.assertFalse(empleo["disponible"])
+            self.assertEqual(empleo["estado"], "pendiente")
+
+        # Degradación honesta cuando CT_LABORAL_PATH no existe
+        with patch.dict(os.environ, {"CT_LABORAL_PATH": str(self.tmp / "inexistente-lab.json")}, clear=False):
+            st_p, _, c_p = invocar_asgi(self.app, "GET", "/api/v1/cruces/resumen")
+            self.assertEqual(st_p, 200)
+            emp_p = json.loads(c_p)["matriz_dependencia_estatal"]["empleo_publico"]
+            self.assertFalse(emp_p["disponible"])
+            self.assertEqual(emp_p["estado"], "pendiente")
 
     def test_laboratorio_consultar_10_pasos_solo_lectura_y_validaciones(self):
         ruta_pib_real = RAIZ_REPO / "data" / "published" / "pib-bde-api.json"
