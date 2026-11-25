@@ -186,8 +186,10 @@ function filterProjects(base, url) {
     },
     cobertura_anio:
       anio === base.anio_corte_archivo
-        ? `Contratos documentados en ${anio}${comunaNombre ? ` para la comuna de ${comunaNombre}` : " en la Región de Aysén"}.`
-        : `El corte MOP DGOP publicado corresponde al ejercicio ${base.anio_corte_archivo}; se muestran los contratos del corte oficial.`,
+        ? (comunaNombre
+            ? `${base.cobertura_anio || `Obras documentadas en ${anio}.`} Filtro comuna: ${comunaNombre}.`
+            : (base.cobertura_anio || `Obras documentadas en ${anio} en la Región de Aysén.`))
+        : `El corte publicado disponible corresponde al ejercicio ${base.anio_corte_archivo}; se muestran las obras documentadas del corte oficial.`,
     pagos_contratos_anteriores: {
       pregunta: "De lo pagado este año, ¿cuánto corresponde a contratos firmados antes de que asumiera esta administración?",
       disponible: pctP1 !== null,
@@ -378,7 +380,9 @@ export default async (req) => {
   }
 
   if (path === "/api/v1/aysen/proyectos") {
-    return filterProjects(snap.aysen_proyectos_base, url);
+    const anioStr = String(url.searchParams.get("anio") || "2026");
+    const base = (snap.aysen_proyectos_por_anio && snap.aysen_proyectos_por_anio[anioStr]) || snap.aysen_proyectos_base;
+    return filterProjects(base, url);
   }
 
   // Fase 2: Estructura 16 regiones, Demografía INE + PIB per cápita y Cruces

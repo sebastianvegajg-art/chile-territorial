@@ -1,5 +1,12 @@
 # Avance de la primera fase
 
+## Ola 2 — Proyectos ampliados 2021–2026: DIPRES Subtítulo 31 (BIP) + MOP DGOP sin doble conteo (25 de noviembre de 2026)
+
+Se amplió la pestaña **Proyectos** y la tarjeta **Arrastre** de **Resumen** más allá de los contratos MOP DGOP integrando las **Iniciativas de Inversión Pública (Subtítulo 31 / Código BIP)** desde DIPRES CKAN (`datos.gob.cl`, sin credenciales y con aritmética `Decimal(34)`):
+
+- **Extractor oficial DIPRES Subt. 31 / BIP (`pipelines/inversion/dipres_bip_live.py`)**: descarga viva y reproducción bit-a-bit con SHA-256 para **6 años (`2021–2026`, corte septiembre 2026)** filtrando estrictamente `Región Destino = 11` y moneda CLP (`1.273` iniciativas-año en Aysén: `220` en 2026 por `$199.310,3 MM` identificados, `216` en 2025 por `$156.504,2 MM`, cubriendo **Gobierno Regional de Aysén FNDR** con `103` iniciativas, **MOP DGOP**, **SERVIU Aysén**, **Servicio de Salud Aysén**, **SLEP Aysén**, **Poder Judicial**, **Justicia** y **Transportes** en las **10 comunas**).
+- **Cero doble conteo y separación estricta de Pregunta 1 vs Pregunta 2 (`apps/api/aysen_piloto.py`, `netlify/functions/api.mjs`)**: en 2026 los `63` Códigos BIP de MOP que ya están en los contratos MOP DGOP se enriquecen sin duplicarse; las iniciativas DIPRES BIP no inventan `fecha_contratacion` (protegiendo la **Pregunta 1** de contratos firmados antes de la administración vigente) y habilitan la **Pregunta 2** (arrastre presupuestario plurianual verificable `2022–2026`) para GORE Aysén FNDR, SERVIU, Salud, SLEP y años históricos `2022–2025` (incluyendo la tarjeta de Arrastre en **Resumen 2025**).
+
 ## Ola 1 — Presupuestos completos 2018–2026 (SINIM 19 variables + DIPRES histórico, 25 de noviembre de 2026)
 
 Se cerraron las brechas presupuestarias históricas de las tres billeteras en Aysén y la referencia nacional usando exclusivamente fuentes oficiales públicas (sin credenciales adicionales y con `Decimal(34)`):

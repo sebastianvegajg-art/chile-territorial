@@ -440,6 +440,110 @@ class TestAysenPilotoEndpoints(unittest.TestCase):
         self.assertEqual(pr_aysen["proyectos_documentados"][0]["id_contrato"], "C-101")
         self.assertEqual(len(pr_aysen["proyectos_documentados"][0]["linea_tiempo"]), 4)
 
+    def test_proyectos_combinados_mop_y_dipres_bip_sin_doble_conteo_ni_contaminar_p1(self):
+        bip_fixture = {
+            "esquema": "dipres-bip-aysen-v1",
+            "por_anio": {
+                "2025": [
+                    {
+                        "id_contrato": "BIP-2025-0571-30418427-0",
+                        "origen_fuente": "dipres_subt31_bip",
+                        "codigo_bip": "30418427-0",
+                        "nombre_proyecto": "Construcción Miradores Aysén",
+                        "institucion": "Gobierno Regional de Aysén (FNDR)",
+                        "partida": "05",
+                        "capitulo": "71",
+                        "comunas": ["Coyhaique"],
+                        "anio_ejercicio": 2025,
+                        "nuevo_o_arrastre": "arrastre",
+                        "calidad_informacion": "documentado",
+                        "motivos_insuficiencia": [],
+                        "compromiso_anio_millones": "3000.000",
+                        "pagado_anio_millones": "2500.000",
+                        "fecha_contratacion": None,
+                        "firmado_antes_administracion_actual": None,
+                    },
+                    {
+                        "id_contrato": "BIP-2025-1831-40088888-0",
+                        "origen_fuente": "dipres_subt31_bip",
+                        "codigo_bip": "40088888-0",
+                        "nombre_proyecto": "Parque Urbano Aysén",
+                        "institucion": "SERVIU Región de Aysén (MINVU)",
+                        "partida": "18",
+                        "capitulo": "31",
+                        "comunas": ["Aysén"],
+                        "anio_ejercicio": 2025,
+                        "nuevo_o_arrastre": "nuevo",
+                        "calidad_informacion": "documentado",
+                        "motivos_insuficiencia": [],
+                        "compromiso_anio_millones": "1000.000",
+                        "pagado_anio_millones": "400.000",
+                        "fecha_contratacion": None,
+                        "firmado_antes_administracion_actual": None,
+                    },
+                ],
+                "2026": [
+                    # Mismo BIP que MOP C-101 (Partida 12) -> NO debe duplicarse
+                    {
+                        "id_contrato": "BIP-2026-1202-30113737-0",
+                        "origen_fuente": "dipres_subt31_bip",
+                        "codigo_bip": "30113737-0",
+                        "nombre_proyecto": "Mejoramiento Ruta 7 Sur (duplicado MOP)",
+                        "institucion": "MOP — Dirección General de Obras Públicas (BIP)",
+                        "partida": "12",
+                        "capitulo": "02",
+                        "comunas": ["Aysén"],
+                        "anio_ejercicio": 2026,
+                        "nuevo_o_arrastre": "arrastre",
+                        "calidad_informacion": "documentado",
+                        "motivos_insuficiencia": [],
+                        "compromiso_anio_millones": "9999.000",
+                        "pagado_anio_millones": "9999.000",
+                        "fecha_contratacion": None,
+                        "firmado_antes_administracion_actual": None,
+                    },
+                    # GORE Aysén FNDR 2026 -> SÍ debe sumarse a Pregunta 2, pero NO contaminar Pregunta 1
+                    {
+                        "id_contrato": "BIP-2026-0571-30418427-0",
+                        "origen_fuente": "dipres_subt31_bip",
+                        "codigo_bip": "30418427-0",
+                        "nombre_proyecto": "Construcción Miradores Aysén",
+                        "institucion": "Gobierno Regional de Aysén (FNDR)",
+                        "partida": "05",
+                        "capitulo": "71",
+                        "comunas": ["Coyhaique"],
+                        "anio_ejercicio": 2026,
+                        "nuevo_o_arrastre": "arrastre",
+                        "calidad_informacion": "documentado",
+                        "motivos_insuficiencia": [],
+                        "compromiso_anio_millones": "1000.000",
+                        "pagado_anio_millones": "500.000",
+                        "fecha_contratacion": None,
+                        "firmado_antes_administracion_actual": None,
+                    },
+                ],
+            },
+            "indice_bip_historico": {
+                "30113737-0": {"primer_anio_observado": 2021, "anios_activos": [2021, 2026]}
+            },
+        }
+        bip_path = self.base / "proyectos-bip.json"
+        bip_path.write_text(json.dumps(bip_fixture), encoding="utf-8")
+        with patch.dict(os.environ, {"CT_PROYECTOS_BIP_PATH": str(bip_path)}):
+            # 2026 combinado: 2 MOP doc + 1 GORE BIP doc = 3 doc (duplicado MOP 30113737-0 excluido!)
+            p26 = ap.aysen_proyectos(anio=2026, comuna="", institucion="", q="")
+            self.assertEqual(p26["total_documentados"], 3)
+            # Pregunta 1 sigue siendo estrictamente MOP (600 / 800 = 75.00%), sin contaminar con GORE sin fecha contrato
+            self.assertEqual(p26["pagos_contratos_anteriores"]["porcentaje"], "75.00")
+            # Pregunta 2 incluye GORE arrastre: (800 + 1000) / (800 + 200 + 1000) = 1800 / 2000 = 90.00%
+            self.assertEqual(p26["arrastre_presupuesto"]["porcentaje"], "90.00")
+
+            # 2025 histórico DIPRES BIP: 3000 / 4000 = 75.00% arrastre, P1 no disponible sin fecha contrato
+            p25 = ap.aysen_proyectos(anio=2025, comuna="", institucion="", q="")
+            self.assertEqual(p25["total_documentados"], 2)
+            self.assertFalse(p25["pagos_contratos_anteriores"]["disponible"])
+            self.assertEqual(p25["arrastre_presupuesto"]["porcentaje"], "75.00")
+
     def test_comuna_invalida_devuelve_422(self):
         with self.assertRaises(HTTPException) as ctx:
             ap.aysen_presupuestos(anio=2025, comuna="13101")

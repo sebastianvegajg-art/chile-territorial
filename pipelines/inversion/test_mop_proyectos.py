@@ -423,5 +423,95 @@ class MopProyectosTest(unittest.TestCase):
             self.assertIn("SHA-256 inválido", str(ctx.exception))
 
 
+class TestDipresBipAysenLive(unittest.TestCase):
+    def test_parsear_trayectoria_plurianual_decimal34_y_reproducir_sha256(self):
+        import dipres_bip_live as bip
+
+        csv_2024 = (
+            "Año;Mes;Partida;Nombre Partida;Capítulo;Nombre Capítulo;Programa;Nombre Programa;"
+            "Región Destino;Nombre Región Destino;Provincia Destino;Nombre Provincia Destino;"
+            "Comuna Destino;Nombre Comuna Destino;Moneda;Código BIP;Nombre Proyecto;"
+            "Suma de Monto Identificado Ley de Pptos.;Suma de Monto Devengado Ley de Pptos.\n"
+            "2024;Diciembre;05;INTERIOR;71;GOBIERNO REGIONAL REGIÓN DE AYSÉN;02;INVERSIÓN REGIONAL;"
+            "11;AYSÉN;1;COYHAIQUE;01;Coyhaique;Miles de Pesos;30418427-0;CONSTRUCCION MIRADORES AYSEN;1.000.000;800.000\n"
+            # Otra región debe excluirse
+            "2024;Diciembre;05;INTERIOR;63;GORE METROPOLITANO;02;INVERSION;"
+            "13;METROPOLITANA;1;SANTIAGO;01;Santiago;Miles de Pesos;40000001-0;OTRA REGION;9.000.000;9.000.000\n"
+        ).encode("utf-8")
+        csv_2025 = (
+            "Año;Mes;Partida;Nombre Partida;Capítulo;Nombre Capítulo;Programa;Nombre Programa;"
+            "Región Destino;Nombre Región Destino;Provincia Destino;Nombre Provincia Destino;"
+            "Comuna Destino;Nombre Comuna Destino;Moneda;Código BIP;Nombre Proyecto;"
+            "Suma de Monto Identificado Ley de Pptos.;Suma de Monto Devengado Ley de Pptos.\n"
+            "2025;Diciembre;05;INTERIOR;71;GOBIERNO REGIONAL REGIÓN DE AYSÉN;02;INVERSIÓN REGIONAL;"
+            "11;AYSÉN;1;COYHAIQUE;01;Coyhaique;Miles de Pesos;30418427-0;CONSTRUCCION MIRADORES AYSEN;2.000.000;1.500.000\n"
+            "2025;Diciembre;18;VIVIENDA;31;SERVIU REGIÓN DE AYSÉN;01;SERVIU;"
+            "11;AYSÉN;2;AYSÉN;01;Aysén;Miles de Pesos;40055555-0;PARQUE URBANO PUERTO AYSEN;500.000;250.000\n"
+        ).encode("utf-8")
+
+        def fake_json(url: str, timeout: int) -> dict:
+            return {
+                "result": {
+                    "results": [
+                        {
+                            "name": "ejecucion-presupuestaria-de-iniciativas-de-inversion-acumulado-2024",
+                            "title": "Ejecución Presupuestaria de Iniciativas de Inversión Acumulado 2024 - Total",
+                            "metadata_modified": "2026-07-22",
+                            "resources": [{"id": "r24", "name": "Inversiones a Diciembre 2024 en pesos", "url": "https://fake/2024.csv"}],
+                        },
+                        {
+                            "name": "ejecucion-presupuestaria-de-iniciativas-de-inversion-acumulado-2025-total",
+                            "title": "Ejecución Presupuestaria de Iniciativas de Inversión Acumulado 2025 - Total",
+                            "metadata_modified": "2026-07-22",
+                            "resources": [{"id": "r25", "name": "Inversiones a Diciembre 2025 en pesos", "url": "https://fake/2025.csv"}],
+                        },
+                    ]
+                }
+            }
+
+        def fake_bytes(url: str, timeout: int) -> bytes:
+            return csv_2024 if "2024" in url else csv_2025
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            salida = base / "published" / "proyectos-bip-aysen.json"
+            pub = bip.extraer_dipres_bip_live(
+                anios=(2024, 2025),
+                raw_root=base / "raw",
+                salida_path=salida,
+                http_get_json=fake_json,
+                http_get_bytes=fake_bytes,
+                timestamp="20261125T160000Z",
+            )
+            # 2024 es primer año de la serie -> no infiere arrastre (insuficiente)
+            self.assertEqual(pub["resumen_por_anio"]["2024"]["total_iniciativas"], 1)
+            self.assertEqual(pub["por_anio"]["2024"][0]["nuevo_o_arrastre"], "sin_dato")
+
+            # 2025: Miradores (30418427-0) es arrastre con 800 MM previos; Parque (40055555-0) es nuevo
+            items_25 = {p["codigo_bip"]: p for p in pub["por_anio"]["2025"]}
+            self.assertEqual(len(items_25), 2)
+            mir = items_25["30418427-0"]
+            self.assertEqual(mir["institucion"], "Gobierno Regional de Aysén (FNDR)")
+            self.assertEqual(mir["nuevo_o_arrastre"], "arrastre")
+            self.assertEqual(mir["compromiso_anio_millones"], "2000.000")
+            self.assertEqual(mir["pagado_anio_millones"], "1500.000")
+            self.assertEqual(mir["pagado_anios_anteriores_millones"], "800.000")
+            self.assertIsNone(mir["fecha_contratacion"])
+            self.assertIsNone(mir["firmado_antes_administracion_actual"])
+
+            parque = items_25["40055555-0"]
+            self.assertEqual(parque["institucion"], "SERVIU Región de Aysén (MINVU)")
+            self.assertEqual(parque["nuevo_o_arrastre"], "nuevo")
+            self.assertEqual(parque["comunas"], ["Aysén"])
+
+            # Reproducir sin red y rechazar corrupción SHA-256
+            dir_insumos = Path(pub["fuente_trazabilidad"]["directorio_insumos"])
+            repro = bip.reproducir_dipres_bip(dir_insumos, salida_path=None)
+            self.assertEqual(repro["por_anio"], pub["por_anio"])
+            (dir_insumos / "dipres-iniciativas-2025.csv").write_bytes(b"corrupto")
+            with self.assertRaises(RuntimeError):
+                bip.reproducir_dipres_bip(dir_insumos, salida_path=None)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -34,6 +34,7 @@ RUTA_PIB_API_DEFECTO = RAIZ_REPO / "data" / "published" / "pib-bde-api.json"
 RUTA_PIB_PUBLICO_DEFECTO = RAIZ_REPO / "data" / "published" / "pib-bde-publico.json"
 RUTA_SECTORIAL_DEFECTO = RAIZ_REPO / "data" / "published" / "pib-sectorial-16-regiones.json"
 RUTA_PROYECTOS_MOP_DEFECTO = RAIZ_REPO / "data" / "published" / "proyectos-mop-aysen.json"
+RUTA_PROYECTOS_BIP_DEFECTO = RAIZ_REPO / "data" / "published" / "proyectos-bip-aysen.json"
 RUTA_SINIM_HISTORICO_DEFECTO = RAIZ_REPO / "data" / "published" / "sinim-aysen-historico.json"
 RUTA_SINIM_OFICIAL_DEFECTO = RAIZ_REPO / "data" / "published" / "sinim-aysen-oficial.json"
 RUTA_SINIM_IMPORTADO_DEFECTO = RAIZ_REPO / "data" / "published" / "sinim-aysen-importado.json"
@@ -204,6 +205,16 @@ def _ruta_sectorial() -> Path:
 def _ruta_proyectos_mop() -> Path:
     personalizada = (os.getenv("CT_PROYECTOS_MOP_PATH") or "").strip()
     return Path(personalizada) if personalizada else RUTA_PROYECTOS_MOP_DEFECTO
+
+
+def _ruta_proyectos_bip() -> Path | None:
+    if "CT_PROYECTOS_BIP_PATH" in os.environ:
+        personalizada = (os.getenv("CT_PROYECTOS_BIP_PATH") or "").strip()
+        return Path(personalizada) if personalizada else None
+    # Si se inyectó un fixture aislado de MOP en pruebas sin definir BIP, mantener hermetismo
+    if (os.getenv("CT_PROYECTOS_MOP_PATH") or "").strip():
+        return None
+    return RUTA_PROYECTOS_BIP_DEFECTO
 
 
 def _ruta_sinim_oficial() -> Path:
@@ -1582,7 +1593,73 @@ def _cargar_proyectos_mop_normalizados() -> tuple[dict[str, Any] | None, list[di
     return datos, lista
 
 
+def _cargar_proyectos_bip() -> dict[str, Any] | None:
+    ruta = _ruta_proyectos_bip()
+    if ruta is None:
+        return None
+    return _leer_json_opcional(ruta)
+
+
+def _combinar_proyectos_anio(
+    anio: int,
+    datos_mop: Mapping[str, Any] | None,
+    lista_mop: Sequence[Mapping[str, Any]],
+    datos_bip: Mapping[str, Any] | None,
+) -> tuple[list[dict[str, Any]], int | None, bool, bool]:
+    """Combina contratos MOP DGOP e iniciativas DIPRES Subt. 31 (BIP) sin doble conteo.
+
+    Retorna ``(lista_combinada, anio_corte_ref, incluye_mop, incluye_bip)``.
+    """
+    anio_corte_mop = _anio_corte_mop(datos_mop)
+    por_anio_bip = (
+        datos_bip.get("por_anio")
+        if isinstance(datos_bip, Mapping) and isinstance(datos_bip.get("por_anio"), Mapping)
+        else {}
+    )
+    indice_bip = (
+        datos_bip.get("indice_bip_historico")
+        if isinstance(datos_bip, Mapping) and isinstance(datos_bip.get("indice_bip_historico"), Mapping)
+        else {}
+    )
+    lista_bip_anio = [
+        dict(p) for p in (por_anio_bip.get(str(anio)) or []) if isinstance(p, Mapping)
+    ]
+
+    # Caso 1: el año tiene corte MOP DGOP (ej. 2026) -> combinar MOP + DIPRES BIP sin duplicar BIPs MOP
+    if lista_mop and (anio_corte_mop is None or anio == anio_corte_mop):
+        bips_mop: set[str] = set()
+        combinados: list[dict[str, Any]] = []
+        for proy in lista_mop:
+            copia = dict(proy)
+            cbip = str(copia.get("codigo_bip") or "").strip()
+            if cbip:
+                bips_mop.add(cbip)
+                if cbip in indice_bip:
+                    copia["dipres_bip_resumen"] = indice_bip[cbip]
+            combinados.append(copia)
+
+        bip_agregados = 0
+        for item in lista_bip_anio:
+            cbip = str(item.get("codigo_bip") or "").strip()
+            partida = str(item.get("partida") or "").strip()
+            # Evitar doble contabilización: si el proyecto MOP (Partida 12) ya está en MOP DGOP, no duplicar
+            if partida == "12" and cbip and cbip in bips_mop:
+                continue
+            combinados.append(item)
+            bip_agregados += 1
+        return combinados, anio_corte_mop, True, bip_agregados > 0
+
+    # Caso 2: años históricos (2021-2025) con corte DIPRES BIP oficial para ese año exacto
+    if lista_bip_anio:
+        return lista_bip_anio, anio, False, True
+
+    # Caso 3: fallback limpio a MOP si no hay BIP para el año
+    return [dict(p) for p in lista_mop], anio_corte_mop, bool(lista_mop), False
+
+
 def _proyecto_vigente_en_anio(proy: Mapping[str, Any], anio: int, anio_corte_archivo: int | None) -> bool | None:
+    if isinstance(proy.get("anio_ejercicio"), int):
+        return proy["anio_ejercicio"] == anio
     anios_activos = proy.get("anios_activos")
     if isinstance(anios_activos, list) and anios_activos:
         return anio in anios_activos
@@ -1990,13 +2067,17 @@ def aysen_resumen(
             "motivo_no_disponible": motivo_inv,
         }
 
-    # --- Tarjeta 3: Arrastre presupuestario de contratos MOP ---
+    # --- Tarjeta 3: Arrastre presupuestario de inversión (MOP DGOP y/o DIPRES Subt. 31 BIP) ---
+    datos_bip = _cargar_proyectos_bip()
+    lista_combinada, anio_corte_ref, incluye_mop, incluye_bip = _combinar_proyectos_anio(
+        anio, datos_mop, lista_mop, datos_bip
+    )
     tarjeta_arrastre: dict[str, Any]
-    if lista_mop:
-        proys_filtrados, cobertura_mop = _filtrar_proyectos_mop(
-            lista_mop,
+    if lista_combinada:
+        proys_filtrados, cobertura_proys = _filtrar_proyectos_mop(
+            lista_combinada,
             anio=anio,
-            anio_corte_archivo=anio_corte_mop,
+            anio_corte_archivo=anio_corte_ref,
             comuna=comuna_sel["nombre"] if comuna_sel else "",
         )
         fecha_cambio = _fecha_cambio_administracion(anio, datos_mop)
@@ -2006,32 +2087,46 @@ def aysen_resumen(
             fecha_cambio_administracion=fecha_cambio,
         )
         arr = resumen_proys["arrastre_presupuesto"]
-        corte_coincide = anio_corte_mop is None or anio == anio_corte_mop
+        corte_coincide = anio_corte_ref is None or anio == anio_corte_ref
         if arr.get("disponible") and corte_coincide:
-            url_mop = (
-                (datos_mop.get("fuente_trazabilidad") or {}).get("url_fuente")
-                if isinstance(datos_mop, Mapping) and isinstance(datos_mop.get("fuente_trazabilidad"), Mapping)
-                else None
-            ) or URL_MOP_DGOP
+            if incluye_mop and incluye_bip:
+                titulo_arr = "Arrastre comprometido en inversión pública"
+                fuente_arr = "MOP DGOP · DIPRES Subt. 31 (BIP)"
+                periodo_arr = f"{anio} (MOP DGOP + iniciativas BIP Aysén)"
+                url_arr = URL_MOP_DGOP
+            elif incluye_bip:
+                titulo_arr = "Arrastre comprometido en inversión pública (BIP)"
+                fuente_arr = "DIPRES · Iniciativas de Inversión Subtítulo 31 (BIP)"
+                periodo_arr = f"{anio} (iniciativas BIP documentadas DIPRES)"
+                url_arr = URL_DIPRES_CKAN
+            else:
+                titulo_arr = "Arrastre comprometido en inversión MOP"
+                fuente_arr = "MOP · Dirección General de Obras Públicas (DGOP)"
+                periodo_arr = f"{anio} (contratos documentados MOP)"
+                url_arr = (
+                    (datos_mop.get("fuente_trazabilidad") or {}).get("url_fuente")
+                    if isinstance(datos_mop, Mapping) and isinstance(datos_mop.get("fuente_trazabilidad"), Mapping)
+                    else None
+                ) or URL_MOP_DGOP
             tarjeta_arrastre = {
                 "id": "arrastre",
-                "titulo": "Arrastre comprometido en inversión MOP",
+                "titulo": titulo_arr,
                 "disponible": True,
                 "valor": arr.get("porcentaje"),
                 "unidad": "%",
-                "periodo": f"{anio} (contratos documentados MOP)",
-                "cobertura": cobertura_mop,
+                "periodo": periodo_arr,
+                "cobertura": cobertura_proys,
                 "monto_arrastre_millones": arr.get("monto_arrastre_comprometido_millones"),
                 "presupuesto_inversion_millones": arr.get("presupuesto_inversion_anio_millones"),
                 "frase_ciudadana": arr.get("frase_ciudadana"),
                 "pestana_destino": "proyectos",
-                "fuente": "MOP · Dirección General de Obras Públicas (DGOP)",
-                "url_fuente": url_mop,
+                "fuente": fuente_arr,
+                "url_fuente": url_arr,
                 "motivo_no_disponible": None,
             }
         else:
             motivo_arr = (
-                f"Sin dato de arrastre presupuestario MOP documentado para {anio}."
+                f"Sin dato de arrastre presupuestario documentado para {anio}."
                 + (f" Corte MOP disponible: {anio_corte_mop}." if anio_corte_mop else "")
             )
             tarjeta_arrastre = {
@@ -2041,7 +2136,7 @@ def aysen_resumen(
                 "valor": None,
                 "unidad": "%",
                 "periodo": f"{anio} (sin dato disponible)",
-                "cobertura": cobertura_mop,
+                "cobertura": cobertura_proys,
                 "monto_arrastre_millones": None,
                 "presupuesto_inversion_millones": None,
                 "frase_ciudadana": motivo_arr,
@@ -2771,14 +2866,19 @@ def aysen_proyectos(
 ):
     comuna_sel = _resolver_comuna_aysen(comuna, obligatoria=False)
     datos_mop, lista_mop = _cargar_proyectos_mop_normalizados()
+    datos_bip = _cargar_proyectos_bip()
 
-    if datos_mop is None:
+    lista_combinada, anio_corte_archivo, incluye_mop, incluye_bip = _combinar_proyectos_anio(
+        anio, datos_mop, lista_mop, datos_bip
+    )
+
+    if datos_mop is None and not lista_combinada:
         vacio_resumen = calcular_resumen_proyectos([], anio=anio)
         return {
             "disponible": False,
             "motivo": (
-                "El corte oficial de proyectos MOP en Aysén (data/published/proyectos-mop-aysen.json) "
-                "aún no se ha publicado."
+                "El corte oficial de proyectos en Aysén (data/published/proyectos-mop-aysen.json "
+                "o proyectos-bip-aysen.json) aún no se ha publicado."
             ),
             "anio_seleccionado": anio,
             "filtros_aplicados": {
@@ -2787,7 +2887,7 @@ def aysen_proyectos(
                 "institucion": institucion.strip() or None,
                 "q": q.strip() or None,
             },
-            "cobertura_anio": "Sin corte MOP DGOP disponible.",
+            "cobertura_anio": "Sin corte MOP DGOP ni DIPRES BIP disponible.",
             "pagos_contratos_anteriores": vacio_resumen["pagos_contratos_anteriores"],
             "arrastre_presupuesto": vacio_resumen["arrastre_presupuesto"],
             "total_proyectos_filtrados": 0,
@@ -2798,35 +2898,45 @@ def aysen_proyectos(
             "instituciones_disponibles": [],
             "comunas_disponibles": [c["nombre"] for c in COMUNAS_AYSEN_LISTA],
             "fuente_trazabilidad": {
-                "institucion": "Ministerio de Obras Públicas (MOP · DGOP)",
+                "institucion": "Ministerio de Obras Públicas (MOP · DGOP) · DIPRES Subtítulo 31 (BIP)",
                 "estado": "pendiente_publicacion",
                 "archivo_esperado": "data/published/proyectos-mop-aysen.json",
                 "url_fuente": URL_MOP_DGOP,
             },
         }
 
-    # Catálogos globales del archivo para filtros del frontend
+    # Catálogos globales del año para filtros del frontend
     instituciones_set = sorted(
         {
             str(p.get("institucion") or p.get("direccion") or p.get("servicio")).strip()
-            for p in lista_mop
+            for p in lista_combinada
             if (p.get("institucion") or p.get("direccion") or p.get("servicio"))
         }
     )
     comunas_set = sorted(
-        {c for p in lista_mop for c in _lista_comunas_proyecto(p)}
+        {c for p in lista_combinada for c in _lista_comunas_proyecto(p)}
     )
 
-    anio_corte_archivo = _anio_corte_mop(datos_mop)
-
     filtrados, cobertura_anio = _filtrar_proyectos_mop(
-        lista_mop,
+        lista_combinada,
         anio=anio,
         anio_corte_archivo=anio_corte_archivo,
         comuna=comuna_sel["nombre"] if comuna_sel else "",
         institucion=institucion,
         q=q,
     )
+    if incluye_mop and incluye_bip:
+        cobertura_anio = (
+            f"Obras combinadas sin doble conteo en {anio}: contratos MOP DGOP e iniciativas "
+            f"DIPRES Subtítulo 31 (GORE Aysén FNDR, SERVIU, Salud, SLEP y servicios)"
+            + (f" en {comuna_sel['nombre']}." if comuna_sel else " en la Región de Aysén.")
+        )
+    elif incluye_bip and not incluye_mop:
+        cobertura_anio = (
+            f"Iniciativas de inversión pública documentadas en DIPRES Subtítulo 31 (BIP) en {anio} "
+            f"(GORE Aysén FNDR, MOP, SERVIU, Salud, SLEP y otros servicios)"
+            + (f" en {comuna_sel['nombre']}." if comuna_sel else " en la Región de Aysén.")
+        )
 
     proyectos_documentados: list[dict[str, Any]] = []
     proyectos_insuficientes: list[dict[str, Any]] = []
@@ -2850,12 +2960,24 @@ def aysen_proyectos(
 
     traza_archivo = (
         dict(datos_mop["fuente_trazabilidad"])
-        if isinstance(datos_mop.get("fuente_trazabilidad"), Mapping)
+        if isinstance(datos_mop, Mapping) and isinstance(datos_mop.get("fuente_trazabilidad"), Mapping)
         else {}
     )
-    traza_archivo.setdefault("institucion", "Ministerio de Obras Públicas (MOP · DGOP)")
+    if incluye_mop and incluye_bip:
+        traza_archivo["institucion"] = (
+            "MOP DGOP (Contratos de Obras) · DIPRES Subtítulo 31 (Iniciativas BIP: GORE Aysén FNDR, SERVIU, Salud, SLEP)"
+        )
+    elif incluye_bip and not incluye_mop:
+        traza_archivo["institucion"] = (
+            "Dirección de Presupuestos (DIPRES) · Iniciativas de Inversión Subtítulo 31 (BIP)"
+        )
+        traza_archivo["url_fuente"] = URL_DIPRES_CKAN
+    else:
+        traza_archivo.setdefault("institucion", "Ministerio de Obras Públicas (MOP · DGOP)")
     traza_archivo.setdefault("url_fuente", URL_MOP_DGOP)
     traza_archivo["anio_corte_archivo"] = anio_corte_archivo
+    traza_archivo["incluye_mop_dgop"] = incluye_mop
+    traza_archivo["incluye_dipres_bip"] = incluye_bip
     traza_archivo["solo_lectura"] = True
 
     return {

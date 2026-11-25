@@ -114,10 +114,13 @@ def main(argv: list[str] | None = None) -> int:
         if not _correr_modulo("pipelines.fiscal.sinim_ficha_live", [], "SINIM fichas comunales (10 comunas Aysén)"):
             fallos.append("sinim_aysen")
 
-    # 3. MOP DGOP proyectos en Aysén
+    # 3. MOP DGOP + DIPRES Subt. 31 BIP proyectos en Aysén (2021–2026)
     if not (args.solo_faltantes and (PUB / "proyectos-mop-aysen.json").exists()):
         if not _correr_modulo("pipelines.inversion.mop_proyectos", [], "MOP DGOP contratos de obras Aysén"):
             fallos.append("mop_aysen")
+    if not (args.solo_faltantes and (PUB / "proyectos-bip-aysen.json").exists()):
+        if not _correr_modulo("pipelines.inversion.dipres_bip_live", [], "DIPRES Subt. 31 iniciativas BIP Aysén (2021–2026)"):
+            fallos.append("dipres_bip_aysen")
 
     # 4. DIPRES CKAN piloto (2025 cierre anual + 2026 en curso)
     if not _preparar_dipres_piloto(solo_faltantes=args.solo_faltantes):
