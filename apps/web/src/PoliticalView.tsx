@@ -1,234 +1,112 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, FormEvent, ReactNode } from 'react'
+import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react'
+import { ApiServiceError } from './services/bcchService'
 import {
-  ApiServiceError,
-  fetchAysenEstructura,
-  fetchBcchSeries,
-  searchBcchSeries,
-} from './services/bcchService'
+  ANIOS_AYSEN,
+  COMUNAS_AYSEN,
+  fetchAysenEconomia,
+  fetchAysenPresupuestos,
+  fetchAysenProyectos,
+  fetchAysenResumen,
+  getComunaNombre,
+} from './services/aysenPilotoService'
 import type {
-  ActividadAysen,
-  BcchSearchResponse,
-  BcchSeriesResponse,
-  EstructuraAysenResponse,
-  FuenteTrazabilidad,
-} from './services/bcchService'
-import { fetchDipresAysen } from './services/dipresService'
-import type { DipresAysenResponse } from './services/dipresService'
-import { fetchDemografiaPoblacion } from './services/fase2Service'
-import type { DemografiaPoblacionResponse } from './services/fase2Service'
-import { fetchSinimAysen, importSinimFile, normalizeSinimErrors, sinimTemplateUrl } from './services/sinimService'
-import type { SinimAysenResponse, SinimErrorFila } from './services/sinimService'
+  AysenEconomiaResponse,
+  AysenPresupuestosResponse,
+  AysenProyectosResponse,
+  AysenResumenResponse,
+  FuenteOficial,
+  InstitucionPresupuesto,
+  ProyectoObra,
+  SerieCrecimientoPunto,
+  SerieParticipacionPunto,
+} from './services/aysenPilotoService'
+import { importSinimFile, normalizeSinimErrors, sinimTemplateUrl } from './services/sinimService'
+import type { SinimErrorFila } from './services/sinimService'
+
+type TabId = 'resumen' | 'economia' | 'presupuestos' | 'proyectos'
+type EconomiaChartView = 'crecimiento' | 'participacion' | 'actividades'
+type BilleteraFiltro = 'todas' | 'regional' | 'municipal' | 'nacional_en_region' | 'nacional'
+
+const TABS: readonly { id: TabId; label: string }[] = [
+  { id: 'resumen', label: 'Resumen' },
+  { id: 'economia', label: 'Economía' },
+  { id: 'presupuestos', label: 'Presupuestos' },
+  { id: 'proyectos', label: 'Proyectos' },
+] as const
+
+const QUICK_DELTAS = [-15, -10, 0, 10, 15] as const
+
+const SIM_MULTIPLIERS = [
+  {
+    value: 1.0,
+    label: '1,0x · Directo contable (hipotético)',
+    description: 'Supuesto hipotético de impacto contable directo sobre el Valor Agregado de Administración Pública (BCCh).',
+  },
+  {
+    value: 0.8,
+    label: '0,8x · Conservador (hipotético)',
+    description: 'Supuesto hipotético conservador con filtración parcial de demanda fuera de la región.',
+  },
+  {
+    value: 1.25,
+    label: '1,25x · Arrastre moderado (hipotético)',
+    description: 'Supuesto hipotético de encadenamiento local moderado sobre comercio y servicios.',
+  },
+  {
+    value: 1.5,
+    label: '1,5x · Encadenamiento ampliado (hipotético)',
+    description: 'Escenario hipotético de sensibilidad superior con mayor circulación local de remuneraciones.',
+  },
+] as const
 
 const num0 = new Intl.NumberFormat('es-CL', { maximumFractionDigits: 0 })
 const num1 = new Intl.NumberFormat('es-CL', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 const num2 = new Intl.NumberFormat('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-const QUICK_DELTAS = [-15, -10, 0, 10, 15] as const
-
-const MULTIPLIERS = [
-  {
-    value: 1.0,
-    label: '1,0x · Directo contable (multiplicador hipotético)',
-    description: 'Supuesto hipotético de impacto contable directo puro sobre el Valor Agregado de Administración Pública (BCCh), sin arrastre secundario.',
-  },
-  {
-    value: 0.8,
-    label: '0,8x · Conservador (multiplicador hipotético)',
-    description: 'Supuesto hipotético conservador con filtración parcial de demanda hacia fuera de la región.',
-  },
-  {
-    value: 1.25,
-    label: '1,25x · Arrastre moderado (multiplicador hipotético)',
-    description: 'Supuesto hipotético de encadenamiento local moderado sobre comercio y servicios regionales.',
-  },
-  {
-    value: 1.5,
-    label: '1,5x · Encadenamiento ampliado (multiplicador hipotético)',
-    description: 'Escenario hipotético de sensibilidad superior con mayor circulación de remuneraciones en la economía local.',
-  },
-] as const
-
-function fmtClp(value: number | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return 'Sin dato'
-  return `$ ${num0.format(value)}`
-}
-
 function fmtMillions(value: number | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return 'Sin dato'
-  return `MM$ ${num0.format(value)}`
+  if (value === null || value === undefined || !Number.isFinite(value)) return 'Sin dato disponible'
+  return `$ ${num0.format(value)} MM`
 }
 
-function fmtPct(value: number | null | undefined, signed = false): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return 'Sin dato'
+function fmtPct(value: number | null | undefined, signed = false, decimals: 1 | 2 = 1): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return 'Sin dato disponible'
   const sign = signed && value > 0 ? '+' : ''
-  return `${sign}${num2.format(value)}%`
+  const formatter = decimals === 2 ? num2 : num1
+  return `${sign}${formatter.format(value)}%`
 }
 
-function fmtTimestamp(value?: string | null): string {
-  if (!value) return 'No informada'
+function fmtPp(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return 'Sin dato disponible'
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${num2.format(value)} pp`
+}
+
+function fmtDate(value?: string | null): string {
+  if (!value) return 'Sin dato disponible'
   const trimmed = value.trim()
-  if (!trimmed) return 'No informada'
-  if (trimmed.includes('T')) {
-    const date = trimmed.slice(0, 10)
-    const time = trimmed.slice(11, 19).replace(/Z$/, '')
-    return time ? `${date} · ${time} UTC` : date
-  }
-  return trimmed.slice(0, 19)
+  if (!trimmed) return 'Sin dato disponible'
+  if (trimmed.includes('T')) return trimmed.slice(0, 10)
+  return trimmed
 }
 
-function isAdminPublica(item: ActividadAysen): boolean {
-  if (item.es_administracion_publica !== undefined) return item.es_administracion_publica
-  const normalized = item.nombre.toLowerCase()
-  return normalized.includes('administración pública') || normalized.includes('administracion publica')
+function extractSinimErrors(error: unknown): SinimErrorFila[] {
+  if (!(error instanceof ApiServiceError) || !error.detalle) return []
+  return normalizeSinimErrors(error.detalle.errores ?? error.detalle.errores_validacion)
 }
 
-function isPesca(item: ActividadAysen): boolean {
-  if (item.es_pesca !== undefined) return item.es_pesca
-  const normalized = item.nombre.toLowerCase()
-  return normalized.includes('pesca') || normalized.includes('acuicultura')
+function resolveFuenteUrl(fuente?: FuenteOficial | null): string | null {
+  if (!fuente?.url) return null
+  return /^https?:\/\//i.test(fuente.url) ? fuente.url : null
 }
 
-function extractHhiInfo(data: EstructuraAysenResponse | null): {
-  indice: number | null
-  escala: string
-  interpretacion: string | null
-  origen: 'servicio' | 'calculado' | 'sin_dato'
-} {
-  if (!data) return { indice: null, escala: '0–10.000', interpretacion: null, origen: 'sin_dato' }
-  if (typeof data.hhi === 'number' && Number.isFinite(data.hhi)) {
-    return { indice: data.hhi, escala: '0–10.000', interpretacion: null, origen: 'servicio' }
-  }
-  if (data.hhi && typeof data.hhi === 'object' && data.hhi.indice !== null && Number.isFinite(data.hhi.indice)) {
-    return {
-      indice: data.hhi.indice,
-      escala: data.hhi.escala || '0–10.000',
-      interpretacion: data.hhi.interpretacion || null,
-      origen: 'servicio',
-    }
-  }
-  const withShare = data.actividades.filter(item => item.participacion_pct !== null && Number.isFinite(item.participacion_pct))
-  if (withShare.length > 0) {
-    const sumSq = withShare.reduce((acc, item) => acc + Math.pow(item.participacion_pct!, 2), 0)
-    const interpretacion = sumSq >= 2500
-      ? 'Alta concentración sectorial (≥ 2.500)'
-      : sumSq >= 1500
-        ? 'Concentración sectorial moderada (1.500–2.499)'
-        : 'Estructura relativamente diversificada (< 1.500)'
-    return { indice: sumSq, escala: '0–10.000', interpretacion, origen: 'calculado' }
-  }
-  return { indice: null, escala: '0–10.000', interpretacion: null, origen: 'sin_dato' }
-}
+/* ============================================================
+   COMPONENTES AUXILIARES REUTILIZABLES
+============================================================ */
 
-interface SourceFooterProps {
-  fuente?: FuenteTrazabilidad | null
-  institucionFallback: string
-  endpointFallback: string
-  seriesCodigos?: string[]
-  actualizadoEn?: string | null
-  extraidoEn?: string | null
-  notaExtra?: string
-}
-
-function SourceFooter({
-  fuente,
-  institucionFallback,
-  endpointFallback,
-  seriesCodigos,
-  actualizadoEn,
-  extraidoEn,
-  notaExtra,
-}: SourceFooterProps) {
-  const institucion = fuente?.institucion || institucionFallback
-  const endpoint = fuente?.endpoint || endpointFallback
-  const explicitCodes = (seriesCodigos ?? []).filter(Boolean)
-  const fallbackCodes = [
-    ...(fuente?.codigo_serie ? [fuente.codigo_serie] : []),
-    ...(fuente?.codigos_series ?? []),
-  ].filter(Boolean)
-  const rawCodigos = explicitCodes.length > 0 ? explicitCodes : fallbackCodes
-  const codigos = rawCodigos.filter((value, index, array) => array.indexOf(value) === index)
-  const shownCodigos = codigos.slice(0, 4)
-  const hiddenCount = codigos.length - shownCodigos.length
-
-  const updated = actualizadoEn ?? fuente?.actualizado_en ?? fuente?.corte ?? null
-  const extracted = extraidoEn ?? fuente?.extraido_en ?? fuente?.fecha_extraccion ?? null
-
+function LoadingCard({ label }: { label: string }) {
   return (
-    <footer className="source-footer" aria-label="Trazabilidad de fuente">
-      <div className="source-footer-row">
-        <span><strong>Fuente:</strong> {institucion}</span>
-        <span><strong>Endpoint:</strong> <code className="mono">{endpoint}</code></span>
-      </div>
-      {shownCodigos.length > 0 && (
-        <div className="source-footer-row">
-          <span>
-            <strong>{codigos.length === 1 ? 'Serie oficial:' : 'Series oficiales:'}</strong>{' '}
-            <code className="mono">
-              {shownCodigos.join(' · ')}
-              {hiddenCount > 0 ? ` (+${hiddenCount} series)` : ''}
-            </code>
-          </span>
-        </div>
-      )}
-      <div className="source-footer-row">
-        <span><strong>Última actualización:</strong> {fmtTimestamp(updated)}</span>
-        <span><strong>Extracción:</strong> {fmtTimestamp(extracted)}</span>
-        {notaExtra && <span>{notaExtra}</span>}
-      </div>
-    </footer>
-  )
-}
-
-interface KeyTerritorialCardProps {
-  ejeLabel: string
-  title: string
-  summary: ReactNode
-  evidenciaFavorable: string
-  evidenciaContraria: string
-  limiteInferencia: string
-  source: SourceFooterProps
-}
-
-function KeyTerritorialCard({
-  ejeLabel,
-  title,
-  summary,
-  evidenciaFavorable,
-  evidenciaContraria,
-  limiteInferencia,
-  source,
-}: KeyTerritorialCardProps) {
-  return (
-    <aside className="panel key-card" aria-label={`Clave Territorial: ${title}`}>
-      <div className="key-card-head">
-        <span className="axis-badge">Clave Territorial</span>
-        <span className="key-card-axis">{ejeLabel}</span>
-      </div>
-      <h3>{title}</h3>
-      <div className="key-card-body">{summary}</div>
-      <dl className="key-evidence">
-        <div>
-          <dt>Evidencia favorable</dt>
-          <dd>{evidenciaFavorable}</dd>
-        </div>
-        <div>
-          <dt>Evidencia contraria / matices</dt>
-          <dd>{evidenciaContraria}</dd>
-        </div>
-        <div>
-          <dt>Límites de inferencia</dt>
-          <dd>{limiteInferencia}</dd>
-        </div>
-      </dl>
-      <SourceFooter {...source} />
-    </aside>
-  )
-}
-
-function LoadingSkeleton({ label }: { label: string }) {
-  return (
-    <div className="pol-loading" role="status" aria-live="polite">
+    <div className="aysen-loading" role="status" aria-live="polite">
       <span className="pol-spinner" aria-hidden="true" />
       <div className="pol-skeleton-lines">
         <p className="pol-loading-label">{label}</p>
@@ -240,414 +118,1018 @@ function LoadingSkeleton({ label }: { label: string }) {
   )
 }
 
-function MissingBcchTokenPanel({
-  message,
-  onRetry,
-}: {
-  message: string
-  onRetry: () => void
-}) {
-  return (
-    <div className="token-diagnostic" role="alert">
-      <div className="token-diagnostic-head">
-        <span className="status-badge is-warn">Credencial BCCh requerida</span>
-        <h3>Configura el token oficial del Banco Central en el servidor local</h3>
-      </div>
-      <p>{message}</p>
-      <ol className="token-steps">
-        <li>Abre o crea el archivo <code className="mono">.env</code> local en el servidor backend de <code className="mono">chile-territorial</code> (excluido de Git).</li>
-        <li>Define <code className="mono">BCCH_API_TOKEN=tu_credencial_oficial</code> (o <code className="mono">BCCH_API_USER</code> y <code className="mono">BCCH_API_PASS</code>) exclusivamente en el entorno del servidor.</li>
-        <li>Reinicia el servidor API y vuelve a consultar. El frontend jamás recibe credenciales ni rellena indicadores con cifras simuladas.</li>
-      </ol>
-      <button type="button" className="primary" onClick={onRetry}>
-        Reintentar consulta BCCh
-      </button>
-    </div>
-  )
-}
-
-function ServiceErrorBox({
+function ErrorNotice({
   error,
   onRetry,
-  retryLabel = 'Reintentar',
 }: {
-  error: ApiServiceError | Error
+  error: Error
   onRetry: () => void
-  retryLabel?: string
 }) {
-  if (error instanceof ApiServiceError && error.isMissingBcchToken) {
-    return <MissingBcchTokenPanel message={error.message} onRetry={onRetry} />
-  }
   return (
-    <div className="service-error-box" role="alert">
+    <div className="aysen-error-box" role="alert">
       <p className="error">{error.message}</p>
       <button type="button" className="secondary-btn" onClick={onRetry}>
-        {retryLabel}
+        Reintentar consulta
       </button>
     </div>
   )
 }
 
-function extractSinimErrors(error: unknown): SinimErrorFila[] {
-  if (!(error instanceof ApiServiceError) || !error.detalle) return []
-  return normalizeSinimErrors(error.detalle.errores ?? error.detalle.errores_validacion)
+function InProgressBanner({
+  anio,
+  mesCorteNombre,
+  aviso,
+}: {
+  anio: number
+  mesCorteNombre?: string | null
+  aviso?: string | null
+}) {
+  return (
+    <aside className="aysen-banner is-info" role="note" aria-label={`Año ${anio} en curso`}>
+      <span className="aysen-banner-badge">Año en curso · {anio}</span>
+      <p>
+        {aviso ||
+          `Datos acumulados${mesCorteNombre ? ` con corte a ${mesCorteNombre} de ${anio}` : ` del ejercicio ${anio} en ejecución`}. Las variaciones se comparan exclusivamente contra el mismo período del año anterior para no distorsionar la lectura.`}
+      </p>
+    </aside>
+  )
 }
 
+function SourceLink({
+  fuente,
+  label = 'Abrir fuente oficial',
+}: {
+  fuente?: FuenteOficial | null
+  label?: string
+}) {
+  const url = resolveFuenteUrl(fuente)
+  if (url) {
+    return (
+      <a
+        className="aysen-source-link"
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {label} <span aria-hidden="true">↗</span>
+      </a>
+    )
+  }
+  if (fuente?.nombre) {
+    return <span className="aysen-source-text">Fuente: {fuente.nombre}</span>
+  }
+  return null
+}
+
+function SourceDetailsBlock({
+  fuente,
+  summaryLabel = 'Ver fuente',
+  extraCodes,
+}: {
+  fuente?: FuenteOficial | null
+  summaryLabel?: string
+  extraCodes?: string[]
+}) {
+  const url = resolveFuenteUrl(fuente)
+  const codes = Array.from(new Set([...(fuente?.codigos_series ?? []), ...(extraCodes ?? [])].filter(Boolean)))
+  return (
+    <details className="aysen-details">
+      <summary>{summaryLabel}</summary>
+      <div className="aysen-details-body">
+        <dl className="aysen-meta-list">
+          <div>
+            <dt>Fuente</dt>
+            <dd>{fuente?.nombre || 'Sin dato disponible'}</dd>
+          </div>
+          {fuente?.institucion && (
+            <div>
+              <dt>Institución</dt>
+              <dd>{fuente.institucion}</dd>
+            </div>
+          )}
+          <div>
+            <dt>Período</dt>
+            <dd>{fuente?.periodo || 'Sin dato disponible'}</dd>
+          </div>
+          <div>
+            <dt>Unidad</dt>
+            <dd>{fuente?.unidad || 'Sin dato disponible'}</dd>
+          </div>
+          <div>
+            <dt>Cobertura</dt>
+            <dd>{fuente?.cobertura || 'Sin dato disponible'}</dd>
+          </div>
+          {fuente?.actualizado_en && (
+            <div>
+              <dt>Actualizado</dt>
+              <dd>{fmtDate(fuente.actualizado_en)}</dd>
+            </div>
+          )}
+          {codes.length > 0 && (
+            <div>
+              <dt>Series oficiales</dt>
+              <dd className="mono">{codes.join(' · ')}</dd>
+            </div>
+          )}
+        </dl>
+        {fuente?.nota && <p className="subtle">{fuente.nota}</p>}
+        {url && (
+          <a className="aysen-source-btn" href={url} target="_blank" rel="noopener noreferrer">
+            Abrir registro oficial <span aria-hidden="true">↗</span>
+          </a>
+        )}
+      </div>
+    </details>
+  )
+}
+
+/* ============================================================
+   GRÁFICOS ACCESIBLES MOBILE-FIRST · PESTAÑA ECONOMÍA
+============================================================ */
+
+function CrecimientoChart({
+  serie,
+  selectedYear,
+  onSelectYear,
+}: {
+  serie: SerieCrecimientoPunto[]
+  selectedYear: number
+  onSelectYear: (year: number) => void
+}) {
+  const validPoints = serie.filter(p => p.aysen_pct !== null || p.chile_pct !== null)
+  if (validPoints.length === 0) {
+    return <p className="aysen-empty">Sin dato disponible para la serie histórica de crecimiento real del PIB.</p>
+  }
+
+  const W = 640
+  const H = 260
+  const padL = 48
+  const padR = 16
+  const padT = 22
+  const padB = 34
+  const plotW = W - padL - padR
+  const plotH = H - padT - padB
+
+  const allVals = validPoints.flatMap(p => [p.aysen_pct, p.chile_pct]).filter((v): v is number => v !== null)
+  const minVal = Math.min(0, ...allVals)
+  const maxVal = Math.max(0, ...allVals)
+  const span = Math.max(2, maxVal - minVal)
+  const low = minVal - span * 0.12
+  const high = maxVal + span * 0.14
+
+  const yPos = (val: number) => padT + ((high - val) / (high - low)) * plotH
+  const zeroY = yPos(0)
+  const stepX = plotW / Math.max(1, validPoints.length)
+  const barW = Math.min(26, Math.max(10, stepX * 0.48))
+
+  const chilePath = validPoints
+    .map((p, i) => {
+      if (p.chile_pct === null) return null
+      const cx = padL + stepX * i + stepX / 2
+      return { x: cx, y: yPos(p.chile_pct) }
+    })
+    .reduce<string>((acc, pt, idx) => {
+      if (!pt) return acc
+      const cmd = acc === '' || validPoints[idx - 1]?.chile_pct === null ? 'M' : 'L'
+      return `${acc}${cmd}${pt.x.toFixed(1)},${pt.y.toFixed(1)} `
+    }, '')
+
+  const activePoint = validPoints.find(p => p.anio === selectedYear) ?? validPoints.at(-1)!
+  const ticks = [high, (high + low) / 2, 0, low].filter((v, i, arr) => arr.findIndex(x => Math.abs(x - v) < 0.5) === i)
+
+  return (
+    <div className="aysen-chart-wrap">
+      <div className="aysen-chart-legend" aria-label="Leyenda del gráfico">
+        <span><i className="aysen-swatch is-aysen" aria-hidden="true" /> Aysén (barras, % real)</span>
+        <span><i className="aysen-swatch is-chile" aria-hidden="true" /> Chile (línea de referencia)</span>
+      </div>
+      <svg
+        className="aysen-svg-chart"
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label={`Crecimiento real anual del PIB de Aysén comparado con Chile entre ${validPoints[0].anio} y ${validPoints.at(-1)!.anio}.`}
+      >
+        {ticks.map((tick, idx) => {
+          const y = yPos(tick)
+          const isZero = Math.abs(tick) < 0.01
+          return (
+            <g key={idx}>
+              <line
+                x1={padL}
+                x2={W - padR}
+                y1={y}
+                y2={y}
+                stroke={isZero ? '#7c948b' : '#dfe7e2'}
+                strokeWidth={isZero ? 1.4 : 1}
+              />
+              <text x={padL - 8} y={y + 4} textAnchor="end" fontSize="11" fill="#4b5e59">
+                {num1.format(tick)}%
+              </text>
+            </g>
+          )
+        })}
+
+        {validPoints.map((pt, i) => {
+          const cx = padL + stepX * i + stepX / 2
+          const isSelected = pt.anio === activePoint.anio
+          const val = pt.aysen_pct
+          const topY = val !== null ? Math.min(yPos(val), zeroY) : zeroY
+          const h = val !== null ? Math.max(2, Math.abs(yPos(val) - zeroY)) : 0
+          const fill = val !== null && val < 0
+            ? (isSelected ? '#99281d' : '#c95c4e')
+            : (isSelected ? '#065a46' : '#08785e')
+          const showLabel = validPoints.length <= 9 || i % 2 === 0 || i === validPoints.length - 1 || isSelected
+
+          return (
+            <g
+              key={pt.anio}
+              className="aysen-svg-bar-group"
+              onClick={() => onSelectYear(pt.anio)}
+            >
+              {isSelected && (
+                <rect
+                  x={cx - stepX / 2 + 2}
+                  y={padT}
+                  width={Math.max(4, stepX - 4)}
+                  height={plotH}
+                  rx={4}
+                  fill="#08785e14"
+                />
+              )}
+              {val !== null && (
+                <rect
+                  x={cx - barW / 2}
+                  y={topY}
+                  width={barW}
+                  height={h}
+                  rx={3}
+                  fill={fill}
+                />
+              )}
+              {showLabel && (
+                <text
+                  x={cx}
+                  y={H - 12}
+                  textAnchor="middle"
+                  fontSize="11"
+                  fontWeight={isSelected ? '700' : '500'}
+                  fill={isSelected ? '#07392f' : '#4b5e59'}
+                >
+                  {pt.anio}
+                </text>
+              )}
+            </g>
+          )
+        })}
+
+        {chilePath && (
+          <path
+            d={chilePath}
+            fill="none"
+            stroke="#2d5c78"
+            strokeWidth={2.4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+
+        {validPoints.map((pt, i) => {
+          if (pt.chile_pct === null) return null
+          const cx = padL + stepX * i + stepX / 2
+          const cy = yPos(pt.chile_pct)
+          const isSelected = pt.anio === activePoint.anio
+          return (
+            <circle
+              key={`cl-${pt.anio}`}
+              cx={cx}
+              cy={cy}
+              r={isSelected ? 4.8 : 3}
+              fill="#2d5c78"
+              stroke="#fff"
+              strokeWidth={1.6}
+            />
+          )
+        })}
+      </svg>
+
+      <div className="aysen-chart-readout" aria-live="polite">
+        <span className="aysen-readout-year">Año {activePoint.anio}</span>
+        <span>Aysén: <strong>{fmtPct(activePoint.aysen_pct, true)}</strong></span>
+        <span>Chile: <strong>{fmtPct(activePoint.chile_pct, true)}</strong></span>
+        {activePoint.estado && <span className="subtle">({activePoint.estado})</span>}
+      </div>
+    </div>
+  )
+}
+
+function ParticipacionChart({
+  serie,
+  selectedYear,
+  onSelectYear,
+}: {
+  serie: SerieParticipacionPunto[]
+  selectedYear: number
+  onSelectYear: (year: number) => void
+}) {
+  const validPoints = serie.filter(p => p.participacion_pct !== null)
+  if (validPoints.length === 0) {
+    return <p className="aysen-empty">Sin dato disponible para la participación histórica en el PIB nacional.</p>
+  }
+
+  const W = 640
+  const H = 240
+  const padL = 52
+  const padR = 18
+  const padT = 22
+  const padB = 34
+  const plotW = W - padL - padR
+  const plotH = H - padT - padB
+
+  const vals = validPoints.map(p => p.participacion_pct!)
+  const minVal = Math.min(...vals)
+  const maxVal = Math.max(...vals)
+  const pad = Math.max(0.08, (maxVal - minVal) * 0.25)
+  const low = Math.max(0, minVal - pad)
+  const high = maxVal + pad
+
+  const xPos = (idx: number) => padL + (validPoints.length > 1 ? (idx / (validPoints.length - 1)) * plotW : plotW / 2)
+  const yPos = (val: number) => padT + ((high - val) / Math.max(0.0001, high - low)) * plotH
+
+  const linePath = validPoints
+    .map((p, i) => `${i === 0 ? 'M' : 'L'}${xPos(i).toFixed(1)},${yPos(p.participacion_pct!).toFixed(1)}`)
+    .join(' ')
+  const areaPath = `${linePath} L${xPos(validPoints.length - 1).toFixed(1)},${(padT + plotH).toFixed(1)} L${xPos(0).toFixed(1)},${(padT + plotH).toFixed(1)} Z`
+
+  const activePoint = validPoints.find(p => p.anio === selectedYear) ?? validPoints.at(-1)!
+  const ticks = [high, (high + low) / 2, low]
+
+  return (
+    <div className="aysen-chart-wrap">
+      <svg
+        className="aysen-svg-chart"
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label={`Participación nominal de Aysén en el PIB nacional de Chile entre ${validPoints[0].anio} y ${validPoints.at(-1)!.anio}.`}
+      >
+        {ticks.map((tick, idx) => {
+          const y = yPos(tick)
+          return (
+            <g key={idx}>
+              <line x1={padL} x2={W - padR} y1={y} y2={y} stroke="#dfe7e2" strokeWidth={1} />
+              <text x={padL - 8} y={y + 4} textAnchor="end" fontSize="11" fill="#4b5e59">
+                {num2.format(tick)}%
+              </text>
+            </g>
+          )
+        })}
+
+        <path d={areaPath} fill="#08785e1a" />
+        <path d={linePath} fill="none" stroke="#08785e" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+
+        {validPoints.map((pt, i) => {
+          const cx = xPos(i)
+          const cy = yPos(pt.participacion_pct!)
+          const isSelected = pt.anio === activePoint.anio
+          const showLabel = validPoints.length <= 8 || i % 2 === 0 || i === validPoints.length - 1 || isSelected
+          return (
+            <g key={pt.anio} className="aysen-svg-bar-group" onClick={() => onSelectYear(pt.anio)}>
+              <circle
+                cx={cx}
+                cy={cy}
+                r={isSelected ? 5.5 : 3.2}
+                fill={isSelected ? '#07392f' : '#08785e'}
+                stroke="#fff"
+                strokeWidth={1.8}
+              />
+              {showLabel && (
+                <text
+                  x={cx}
+                  y={H - 12}
+                  textAnchor="middle"
+                  fontSize="11"
+                  fontWeight={isSelected ? '700' : '500'}
+                  fill={isSelected ? '#07392f' : '#4b5e59'}
+                >
+                  {pt.anio}
+                </text>
+              )}
+            </g>
+          )
+        })}
+      </svg>
+
+      <div className="aysen-chart-readout" aria-live="polite">
+        <span className="aysen-readout-year">Año {activePoint.anio}</span>
+        <span>Participación en Chile: <strong>{fmtPct(activePoint.participacion_pct, false, 2)}</strong></span>
+        {activePoint.pib_aysen_millones !== null && (
+          <span>PIB Aysén: <strong>{fmtMillions(activePoint.pib_aysen_millones)}</strong></span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ============================================================
+   TARJETA DE INSTITUCIÓN · PESTAÑA PRESUPUESTOS
+============================================================ */
+
+function InstitucionPresupuestoCard({ inst }: { inst: InstitucionPresupuesto }) {
+  const radioPhrase =
+    inst.frase_radial ||
+    (inst.gasto_corriente_pct !== null
+      ? `De cada $100 ejecutados por ${inst.nombre}, $${num1.format(inst.gasto_corriente_pct)} correspondieron a gasto corriente${inst.inversion_pct !== null ? ` y $${num1.format(inst.inversion_pct)} a inversión` : ''}.`
+      : null)
+
+  const currentPctBar = inst.gasto_corriente_pct !== null ? Math.min(100, Math.max(0, inst.gasto_corriente_pct)) : 0
+  const investPctBar = inst.inversion_pct !== null ? Math.min(100 - currentPctBar, Math.max(0, inst.inversion_pct)) : 0
+  const hasBar = currentPctBar > 0 || investPctBar > 0
+
+  return (
+    <article className={`aysen-card aysen-inst-card${inst.destacado_piloto ? ' is-pilot' : ''}`}>
+      <div className="aysen-card-top">
+        <span className={`aysen-territory-tag is-${inst.rol_billetera}`}>
+          {inst.territorio_etiqueta}
+        </span>
+        {inst.avance_ejecucion_pct !== null && (
+          <span className="aysen-pill-muted">Avance {fmtPct(inst.avance_ejecucion_pct)}</span>
+        )}
+      </div>
+
+      <h3 className="aysen-inst-title">{inst.nombre}</h3>
+
+      {/* 3 cifras presupuestarias */}
+      <dl className="aysen-budget-trio">
+        <div>
+          <dt>Presupuesto inicial</dt>
+          <dd className={inst.presupuesto_inicial_millones === null ? 'is-missing' : ''}>
+            {fmtMillions(inst.presupuesto_inicial_millones)}
+          </dd>
+        </div>
+        <div>
+          <dt>Presupuesto vigente</dt>
+          <dd className={inst.presupuesto_vigente_millones === null ? 'is-missing' : ''}>
+            {fmtMillions(inst.presupuesto_vigente_millones)}
+          </dd>
+        </div>
+        <div className="is-primary">
+          <dt>Gasto ejecutado</dt>
+          <dd className={inst.gasto_ejecutado_millones === null ? 'is-missing' : ''}>
+            {fmtMillions(inst.gasto_ejecutado_millones)}
+          </dd>
+        </div>
+      </dl>
+
+      {/* Corriente vs Inversión */}
+      <div className="aysen-split-box">
+        <div className="aysen-split-grid">
+          <div>
+            <span className="aysen-split-label">
+              <i className="aysen-swatch is-current" aria-hidden="true" /> Gasto corriente
+            </span>
+            <strong className="aysen-split-val">{fmtMillions(inst.gasto_corriente_millones)}</strong>
+            <span className="aysen-split-pct">{fmtPct(inst.gasto_corriente_pct)}</span>
+          </div>
+          <div>
+            <span className="aysen-split-label">
+              <i className="aysen-swatch is-invest" aria-hidden="true" /> Inversión
+            </span>
+            <strong className="aysen-split-val">{fmtMillions(inst.inversion_millones)}</strong>
+            <span className="aysen-split-pct">{fmtPct(inst.inversion_pct)}</span>
+          </div>
+        </div>
+
+        {hasBar && (
+          <div className="aysen-split-bar" aria-hidden="true">
+            {currentPctBar > 0 && <span className="is-current" style={{ width: `${currentPctBar}%` }} />}
+            {investPctBar > 0 && <span className="is-invest" style={{ width: `${investPctBar}%` }} />}
+          </div>
+        )}
+
+        <p className="aysen-base-note">
+          <strong>Base de cálculo:</strong> {inst.base_calculo || 'Porcentaje sobre gasto ejecutado total informado por la fuente.'}
+        </p>
+      </div>
+
+      {/* Frase radial destacada */}
+      {radioPhrase ? (
+        <blockquote className="aysen-radio-quote">
+          «{radioPhrase}»
+        </blockquote>
+      ) : (
+        inst.sin_dato_motivo && <p className="subtle">{inst.sin_dato_motivo}</p>
+      )}
+
+      {/* ¿Cuánto cuesta administrar esta institución? */}
+      <div className="aysen-admin-cost">
+        <h4>¿Cuánto cuesta administrar esta institución?</h4>
+        {inst.costo_administracion.disponible ? (
+          <>
+            <p className="aysen-admin-cost-num">
+              <strong>{fmtMillions(inst.costo_administracion.monto_millones)}</strong>
+              {inst.costo_administracion.porcentaje_pct !== null && (
+                <span> ({fmtPct(inst.costo_administracion.porcentaje_pct)})</span>
+              )}
+            </p>
+            {inst.costo_administracion.respuesta && <p>{inst.costo_administracion.respuesta}</p>}
+          </>
+        ) : (
+          <p>
+            {inst.costo_administracion.brecha_explicacion ||
+              inst.costo_administracion.respuesta ||
+              'El registro presupuestario oficial no separa el funcionamiento administrativo interno de la prestación directa de servicios.'}
+          </p>
+        )}
+      </div>
+
+      {/* Desplegable Ver desglose */}
+      {(inst.desglose.length > 0 || inst.personal_sinim.length > 0) && (
+        <details className="aysen-details">
+          <summary>Ver desglose</summary>
+          <div className="aysen-details-body">
+            {inst.desglose.length > 0 && (
+              <ul className="aysen-breakdown-list">
+                {inst.desglose.map((item, idx) => (
+                  <li key={`${item.categoria}-${idx}`}>
+                    <div>
+                      <strong>{item.categoria}</strong>
+                      {item.detalle && <span className="subtle"> · {item.detalle}</span>}
+                    </div>
+                    <div className="aysen-breakdown-nums">
+                      <span>{fmtMillions(item.monto_millones)}</span>
+                      {item.porcentaje_pct !== null && <small>{' '}({fmtPct(item.porcentaje_pct)})</small>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {inst.personal_sinim.length > 0 && (
+              <div className="aysen-sub-breakdown">
+                <h5>Detalle de personal (SINIM: Planta · Contrata · Honorarios · Programas)</h5>
+                <ul className="aysen-breakdown-list is-compact">
+                  {inst.personal_sinim.map((item, idx) => (
+                    <li key={`${item.categoria}-${idx}`}>
+                      <span>{item.categoria}</span>
+                      <div className="aysen-breakdown-nums">
+                        <span>{fmtMillions(item.monto_millones)}</span>
+                        {item.porcentaje_pct !== null && <small>{' '}({fmtPct(item.porcentaje_pct)})</small>}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </details>
+      )}
+
+      {/* Desplegable Ver fuente */}
+      <SourceDetailsBlock fuente={inst.fuente} summaryLabel="Ver fuente" />
+    </article>
+  )
+}
+
+/* ============================================================
+   FICHA DE PROYECTO · PESTAÑA PROYECTOS
+============================================================ */
+
+function ProyectoFicha({
+  proyecto,
+  anio,
+  onBack,
+}: {
+  proyecto: ProyectoObra
+  anio: number
+  onBack: () => void
+}) {
+  const radioOneLiner =
+    proyecto.frase_radial ||
+    `Obra a cargo de ${proyecto.institucion}${proyecto.administracion_origen ? ` (contratada en la gestión ${proyecto.administracion_origen})` : ''}: durante ${anio} registró pagos por ${fmtMillions(proyecto.pagado_anio_millones)}.`
+
+  return (
+    <article className="aysen-card aysen-project-dossier" aria-labelledby="ficha-proyecto-titulo">
+      <div className="aysen-dossier-nav">
+        <button type="button" className="secondary-btn" onClick={onBack}>
+          ← Volver a la lista
+        </button>
+        <span className={`aysen-arrastre-badge is-${proyecto.clasificacion_arrastre}`}>
+          {proyecto.etiqueta_arrastre}
+        </span>
+      </div>
+
+      <div className="aysen-dossier-head">
+        <div className="aysen-dossier-meta">
+          {proyecto.comuna && <span>{proyecto.comuna}</span>}
+          <span>{proyecto.institucion}</span>
+          {proyecto.codigo_bip && <span className="mono">BIP {proyecto.codigo_bip}</span>}
+          {proyecto.codigo_contrato && <span className="mono">Contrato {proyecto.codigo_contrato}</span>}
+        </div>
+        <h3 id="ficha-proyecto-titulo">{proyecto.nombre}</h3>
+      </div>
+
+      <blockquote className="aysen-radio-quote">
+        «{radioOneLiner}»
+      </blockquote>
+
+      {/* 3 cifras monetarias claramente diferenciadas */}
+      <section aria-label="Cifras financieras de la obra">
+        <dl className="aysen-project-money">
+          <div className="is-total">
+            <dt>Costo total del contrato / proyecto</dt>
+            <dd className={proyecto.costo_total_millones === null ? 'is-missing' : ''}>
+              {fmtMillions(proyecto.costo_total_millones)}
+            </dd>
+          </div>
+          <div>
+            <dt>Compromiso del año ({anio})</dt>
+            <dd className={proyecto.compromiso_anio_millones === null ? 'is-missing' : ''}>
+              {fmtMillions(proyecto.compromiso_anio_millones)}
+            </dd>
+          </div>
+          <div className="is-paid">
+            <dt>Pagado en el año ({anio})</dt>
+            <dd className={proyecto.pagado_anio_millones === null ? 'is-missing' : ''}>
+              {fmtMillions(proyecto.pagado_anio_millones)}
+            </dd>
+          </div>
+        </dl>
+
+        <dl className="aysen-project-money-sub">
+          <div>
+            <dt>Pagado en años anteriores</dt>
+            <dd>{fmtMillions(proyecto.pagado_anios_anteriores_millones)}</dd>
+          </div>
+          <div>
+            <dt>Saldo por pagar</dt>
+            <dd>{fmtMillions(proyecto.saldo_por_pagar_millones)}</dd>
+          </div>
+        </dl>
+      </section>
+
+      {/* Línea de tiempo de 4 hitos */}
+      <section className="aysen-timeline-section" aria-label="Línea de tiempo de hitos oficiales">
+        <h4>Línea de tiempo de la obra (4 hitos)</h4>
+        <ol className="aysen-timeline">
+          {proyecto.hitos.map(hito => {
+            const docUrl = hito.documento_url && /^https?:\/\//i.test(hito.documento_url) ? hito.documento_url : null
+            return (
+              <li key={`${hito.orden}-${hito.etapa}`} className="aysen-timeline-item">
+                <span className="aysen-timeline-step" aria-hidden="true">{hito.orden}</span>
+                <div className="aysen-timeline-body">
+                  <div className="aysen-timeline-top">
+                    <strong>{hito.etapa}</strong>
+                    <span className={`aysen-timeline-date${!hito.fecha ? ' is-missing' : ''}`}>
+                      {fmtDate(hito.fecha)}
+                    </span>
+                  </div>
+                  <dl className="aysen-timeline-meta">
+                    <div>
+                      <dt>Institución responsable</dt>
+                      <dd>{hito.institucion_responsable || 'Sin dato disponible'}</dd>
+                    </div>
+                    <div>
+                      <dt>Administración vigente</dt>
+                      <dd>{hito.administracion_vigente || 'Sin dato disponible'}</dd>
+                    </div>
+                  </dl>
+                  {hito.nota && <p className="subtle">{hito.nota}</p>}
+                  {docUrl ? (
+                    <a
+                      className="aysen-source-link"
+                      href={docUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {hito.documento_etiqueta || 'Ver documento de respaldo'} <span aria-hidden="true">↗</span>
+                    </a>
+                  ) : (
+                    <span className="subtle">Documento oficial: Sin dato disponible</span>
+                  )}
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+      </section>
+
+      <SourceDetailsBlock fuente={proyecto.fuente} summaryLabel="Ver fuente de la ficha" />
+    </article>
+  )
+}
+
+/* ============================================================
+   VISTA PRINCIPAL · OBSERVATORIO DE AYSÉN (4 PESTAÑAS)
+============================================================ */
+
 export function PoliticalView() {
-  const currentYear = new Date().getFullYear()
+  const yearSelectId = useId()
+  const comunaSelectId = useId()
+  const searchInputId = useId()
+  const instSelectId = useId()
   const sliderId = useId()
   const numInputId = useId()
   const multiplierId = useId()
   const sinimInputId = useId()
-  const dipresYearId = useId()
-  const searchFreqId = useId()
-  const searchQueryId = useId()
-  const seriesIdInput = useId()
-  const firstDateInput = useId()
 
-  // Estado BCCh (Ejes 1, 2 y Simulador)
-  const [bcch, setBcch] = useState<{
-    loading: boolean
-    data: EstructuraAysenResponse | null
-    error: ApiServiceError | Error | null
-  }>({ loading: true, data: null, error: null })
-  const [axis2Mode, setAxis2Mode] = useState<'bars' | 'table'>('bars')
+  // Estado compartido que se conserva al cambiar de pestaña
+  const [activeTab, setActiveTab] = useState<TabId>('resumen')
+  const [anio, setAnio] = useState<number>(2025)
+  const [comunaPresupuesto, setComunaPresupuesto] = useState<string>('11201')
+  const [comunaProyectos, setComunaProyectos] = useState<string>('')
+  const [comunaActivaEnCabecera, setComunaActivaEnCabecera] = useState<string>('11201')
+  const [refreshTick, setRefreshTick] = useState<number>(0)
 
-  // Estado Demografía INE + PIB per cápita (Eje 1 · silencioso si aún no está disponible)
-  const [demografia, setDemografia] = useState<DemografiaPoblacionResponse | null>(null)
+  // Sub-estado pestaña Economía
+  const [ecoView, setEcoView] = useState<EconomiaChartView>('crecimiento')
+  const [deltaPct, setDeltaPct] = useState<number>(0)
+  const [multiplier, setMultiplier] = useState<number>(1.0)
 
-  // Estado DIPRES (Ejes 3 y 4)
-  const [dipresYear, setDipresYear] = useState<number>(2025)
-  const [dipres, setDipres] = useState<{
-    loading: boolean
-    data: DipresAysenResponse | null
-    error: ApiServiceError | Error | null
-  }>({ loading: true, data: null, error: null })
-
-  // Estado SINIM (Eje 4)
-  const [sinim, setSinim] = useState<{
-    loading: boolean
-    data: SinimAysenResponse | null
-    error: ApiServiceError | Error | null
-  }>({ loading: true, data: null, error: null })
+  // Sub-estado pestaña Presupuestos
+  const [billeteraFiltro, setBilleteraFiltro] = useState<BilleteraFiltro>('todas')
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [sinimUpload, setSinimUpload] = useState<{
     submitting: boolean
-    selectedFileName: string
     successMessage: string
     errorMessage: string
     rowErrors: SinimErrorFila[]
   }>({
     submitting: false,
-    selectedFileName: '',
     successMessage: '',
     errorMessage: '',
     rowErrors: [],
   })
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Estado Simulador
-  const [deltaPct, setDeltaPct] = useState<number>(0)
-  const [multiplier, setMultiplier] = useState<number>(1.0)
+  // Sub-estado pestaña Proyectos
+  const [institucionFiltro, setInstitucionFiltro] = useState<string>('')
+  const [searchInput, setSearchInput] = useState<string>('')
+  const [appliedSearch, setAppliedSearch] = useState<string>('')
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
 
-  // Estado Explorador vivo BCCh
-  const [searchFreq, setSearchFreq] = useState<'ANNUAL' | 'QUARTERLY'>('ANNUAL')
-  const [searchTerm, setSearchTerm] = useState<string>('Aysén')
-  const [searchState, setSearchState] = useState<{
+  // Estados de carga de cada endpoint
+  const [resumenState, setResumenState] = useState<{
     loading: boolean
-    data: BcchSearchResponse | null
-    error: ApiServiceError | Error | null
-  }>({ loading: false, data: null, error: null })
-  const [manualSeriesId, setManualSeriesId] = useState<string>('')
-  const [firstDate, setFirstDate] = useState<string>('2018-01-01')
-  const [seriesState, setSeriesState] = useState<{
-    loading: boolean
-    data: BcchSeriesResponse | null
-    error: ApiServiceError | Error | null
+    data: AysenResumenResponse | null
+    error: Error | null
   }>({ loading: false, data: null, error: null })
 
-  const loadBcch = useCallback(async (refresh = false, signal?: AbortSignal) => {
-    setBcch(prev => ({ ...prev, loading: true, error: null }))
-    try {
-      const data = await fetchAysenEstructura(2013, currentYear, refresh, signal)
-      if (!signal?.aborted) setBcch({ loading: false, data, error: null })
-    } catch (err) {
-      if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) return
-      setBcch({
-        loading: false,
-        data: null,
-        error: err instanceof Error ? err : new Error('Error desconocido al consultar BCCh.'),
-      })
-    }
-  }, [currentYear])
+  const [economiaState, setEconomiaState] = useState<{
+    loading: boolean
+    data: AysenEconomiaResponse | null
+    error: Error | null
+  }>({ loading: false, data: null, error: null })
 
-  const loadDipres = useCallback(async (year: number, refresh = false, signal?: AbortSignal) => {
-    setDipres(prev => ({ ...prev, loading: true, error: null }))
-    try {
-      const data = await fetchDipresAysen(year, refresh, signal)
-      if (!signal?.aborted) setDipres({ loading: false, data, error: null })
-    } catch (err) {
-      if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) return
-      setDipres({
-        loading: false,
-        data: null,
-        error: err instanceof Error ? err : new Error('Error desconocido al consultar DIPRES.'),
-      })
-    }
-  }, [])
+  const [presupuestosState, setPresupuestosState] = useState<{
+    loading: boolean
+    data: AysenPresupuestosResponse | null
+    error: Error | null
+  }>({ loading: false, data: null, error: null })
 
-  const loadSinim = useCallback(async (signal?: AbortSignal) => {
-    setSinim(prev => ({ ...prev, loading: true, error: null }))
-    try {
-      const data = await fetchSinimAysen(signal)
-      if (!signal?.aborted) setSinim({ loading: false, data, error: null })
-    } catch (err) {
-      if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) return
-      setSinim({
-        loading: false,
-        data: null,
-        error: err instanceof Error ? err : new Error('Error desconocido al consultar SINIM.'),
-      })
-    }
-  }, [])
+  const [proyectosState, setProyectosState] = useState<{
+    loading: boolean
+    data: AysenProyectosResponse | null
+    error: Error | null
+  }>({ loading: false, data: null, error: null })
 
-  const loadDemografiaSilenciosa = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const data = await fetchDemografiaPoblacion(2013, currentYear, signal)
-      if (!signal?.aborted && data.observaciones.length > 0) {
-        setDemografia(data)
+  const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({
+    resumen: null,
+    economia: null,
+    presupuestos: null,
+    proyectos: null,
+  })
+
+  // Sincronización amable de comuna entre Presupuestos y Proyectos
+  function handleComunaChange(value: string) {
+    if (activeTab === 'proyectos') {
+      setComunaProyectos(value)
+      setSelectedProjectId(null)
+      if (value) {
+        setComunaPresupuesto(value)
+        setComunaActivaEnCabecera(value)
+      } else {
+        setComunaActivaEnCabecera('')
       }
-    } catch {
-      // Silencioso: si /api/v1/demografia/poblacion aún no está publicado, se mantiene el aviso de pendiente.
+      return
     }
-  }, [currentYear])
+    const clean = value || '11201'
+    setComunaPresupuesto(clean)
+    setComunaProyectos(clean)
+    setComunaActivaEnCabecera(clean)
+    setSelectedProjectId(null)
+  }
 
-  useEffect(() => {
-    const controller = new AbortController()
-    loadBcch(false, controller.signal)
-    loadSinim(controller.signal)
-    loadDemografiaSilenciosa(controller.signal)
-    return () => controller.abort()
-  }, [loadBcch, loadSinim, loadDemografiaSilenciosa])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    loadDipres(dipresYear, false, controller.signal)
-    return () => controller.abort()
-  }, [dipresYear, loadDipres])
-
-  // Datos derivados BCCh (solo desde observaciones reales)
-  const resumen = bcch.data?.resumen_pib ?? null
-
-  // Datos derivados PIB per cápita oficial (BCCh + INE) para Eje 1
-  const perCapitaEje1 = useMemo(() => {
-    if (!demografia || demografia.observaciones.length === 0) return null
-    const targetYear = resumen?.anio ?? demografia.ultimo_anio
-    const pickYear = demografia.observaciones.some(o => o.anio === targetYear && o.territorio === '11')
-      ? targetYear
-      : demografia.ultimo_anio
-    const aysen = demografia.observaciones.find(o => o.territorio === '11' && o.anio === pickYear) ?? null
-    const chile = demografia.observaciones.find(o => o.territorio === 'CL' && o.anio === pickYear) ?? null
-    if (!aysen || (aysen.pib_per_capita_real_clp === null && aysen.pib_per_capita_nominal_clp === null)) {
-      return null
+  function switchTab(next: TabId) {
+    setActiveTab(next)
+    if (next !== 'proyectos') {
+      setSelectedProjectId(null)
     }
-    return { anio: pickYear, aysen, chile }
-  }, [demografia, resumen?.anio])
+  }
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    let nextIndex: number | null = null
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % TABS.length
+    else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + TABS.length) % TABS.length
+    else if (event.key === 'Home') nextIndex = 0
+    else if (event.key === 'End') nextIndex = TABS.length - 1
+    if (nextIndex === null) return
+    event.preventDefault()
+    const nextTab = TABS[nextIndex].id
+    switchTab(nextTab)
+    tabRefs.current[nextTab]?.focus()
+  }
+
+  // Carga pestaña 1: Resumen
+  useEffect(() => {
+    if (activeTab !== 'resumen') return
+    const controller = new AbortController()
+    setResumenState(prev => ({ ...prev, loading: true, error: null }))
+    fetchAysenResumen(anio, comunaActivaEnCabecera || undefined, controller.signal)
+      .then(data => {
+        if (!controller.signal.aborted) setResumenState({ loading: false, data, error: null })
+      })
+      .catch(err => {
+        if (controller.signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) return
+        setResumenState({
+          loading: false,
+          data: null,
+          error: err instanceof Error ? err : new Error('No se pudo cargar el resumen de Aysén.'),
+        })
+      })
+    return () => controller.abort()
+  }, [activeTab, anio, comunaActivaEnCabecera, refreshTick])
+
+  // Carga pestaña 2: Economía
+  useEffect(() => {
+    if (activeTab !== 'economia') return
+    const controller = new AbortController()
+    setEconomiaState(prev => ({ ...prev, loading: true, error: null }))
+    fetchAysenEconomia(anio, controller.signal)
+      .then(data => {
+        if (!controller.signal.aborted) setEconomiaState({ loading: false, data, error: null })
+      })
+      .catch(err => {
+        if (controller.signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) return
+        setEconomiaState({
+          loading: false,
+          data: null,
+          error: err instanceof Error ? err : new Error('No se pudo cargar la información económica de Aysén.'),
+        })
+      })
+    return () => controller.abort()
+  }, [activeTab, anio, refreshTick])
+
+  // Carga pestaña 3: Presupuestos
+  useEffect(() => {
+    if (activeTab !== 'presupuestos') return
+    const controller = new AbortController()
+    setPresupuestosState(prev => ({ ...prev, loading: true, error: null }))
+    fetchAysenPresupuestos(anio, comunaPresupuesto, controller.signal)
+      .then(data => {
+        if (!controller.signal.aborted) setPresupuestosState({ loading: false, data, error: null })
+      })
+      .catch(err => {
+        if (controller.signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) return
+        setPresupuestosState({
+          loading: false,
+          data: null,
+          error: err instanceof Error ? err : new Error('No se pudieron cargar los presupuestos de Aysén.'),
+        })
+      })
+    return () => controller.abort()
+  }, [activeTab, anio, comunaPresupuesto, refreshTick])
+
+  // Carga pestaña 4: Proyectos
+  useEffect(() => {
+    if (activeTab !== 'proyectos') return
+    const controller = new AbortController()
+    setProyectosState(prev => ({ ...prev, loading: true, error: null }))
+    fetchAysenProyectos(
+      {
+        anio,
+        comuna: comunaProyectos || undefined,
+        institucion: institucionFiltro || undefined,
+        q: appliedSearch || undefined,
+      },
+      controller.signal,
+    )
+      .then(data => {
+        if (!controller.signal.aborted) setProyectosState({ loading: false, data, error: null })
+      })
+      .catch(err => {
+        if (controller.signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) return
+        setProyectosState({
+          loading: false,
+          data: null,
+          error: err instanceof Error ? err : new Error('No se pudieron cargar los proyectos de Aysén.'),
+        })
+      })
+    return () => controller.abort()
+  }, [activeTab, anio, comunaProyectos, institucionFiltro, appliedSearch, refreshTick])
+
+  // Simulador hipotético (dentro de <details> en Economía)
+  const simAdminBase = economiaState.data?.admin_publica_millones ?? null
+  const simPibBase = economiaState.data?.pib_nominal_millones ?? null
+  const simulation = useMemo(() => {
+    if (simAdminBase === null || simPibBase === null || simPibBase <= 0) return null
+    const deltaAdmin = simAdminBase * (deltaPct / 100)
+    const deltaPib = deltaAdmin * multiplier
+    const pibSimulated = simPibBase + deltaPib
+    const impactPibPp = (deltaPib / simPibBase) * 100
+    return { deltaAdmin, deltaPib, pibSimulated, impactPibPp }
+  }, [simAdminBase, simPibBase, deltaPct, multiplier])
+
+  const selectedMultiplierInfo = SIM_MULTIPLIERS.find(m => m.value === multiplier) ?? SIM_MULTIPLIERS[0]
+
+  // Actividades ordenadas para Economía
   const actividadesOrdenadas = useMemo(() => {
-    if (!bcch.data?.actividades) return []
-    return [...bcch.data.actividades].sort((a, b) => {
+    if (!economiaState.data?.actividades) return []
+    return [...economiaState.data.actividades].sort((a, b) => {
       const av = a.participacion_pct ?? a.valor_millones ?? -Infinity
       const bv = b.participacion_pct ?? b.valor_millones ?? -Infinity
       return bv - av
     })
-  }, [bcch.data])
-
-  const adminActivity = useMemo(
-    () => actividadesOrdenadas.find(isAdminPublica) ?? null,
-    [actividadesOrdenadas],
-  )
-  const pescaActivity = useMemo(
-    () => actividadesOrdenadas.find(isPesca) ?? null,
-    [actividadesOrdenadas],
-  )
-  const hhiInfo = useMemo(() => extractHhiInfo(bcch.data), [bcch.data])
+  }, [economiaState.data])
 
   const maxActivityPct = useMemo(() => {
     const values = actividadesOrdenadas
-      .map(item => item.participacion_pct ?? 0)
-      .filter(value => Number.isFinite(value) && value > 0)
-    return values.length ? Math.max(...values) : 1
+      .map(a => a.participacion_pct ?? 0)
+      .filter(v => Number.isFinite(v) && v > 0)
+    return values.length > 0 ? Math.max(...values) : 1
   }, [actividadesOrdenadas])
 
-  // Datos derivados DIPRES
-  const dipresCorriente = dipres.data?.gore_aysen?.gasto_corriente_sub_21_26_millones ?? null
-  const dipresInversion = dipres.data?.gore_aysen?.inversion_sub_29_31_millones ?? null
-  const dipresSub33 = dipres.data?.gore_aysen?.transferencias_capital_sub_33_millones ?? null
-  const dipresPartida31 = dipres.data?.gore_aysen?.financiamiento_partida_31_millones ?? null
-
-  const dipresRatio = useMemo(() => {
-    if (dipres.data?.ratio_corriente_sobre_inversion_pct !== null && dipres.data?.ratio_corriente_sobre_inversion_pct !== undefined) {
-      return dipres.data.ratio_corriente_sobre_inversion_pct
+  // Instituciones ordenadas y filtradas en Presupuestos
+  const institucionesFiltradas = useMemo(() => {
+    const list = presupuestosState.data?.instituciones ?? []
+    const order: Record<InstitucionPresupuesto['rol_billetera'], number> = {
+      regional: 1,
+      municipal: 2,
+      nacional_en_region: 3,
+      nacional: 4,
     }
-    if (dipresCorriente !== null && dipresCorriente > 0 && dipresInversion !== null && dipresInversion > 0) {
-      return (dipresCorriente / dipresInversion) * 100
-    }
-    return null
-  }, [dipres.data, dipresCorriente, dipresInversion])
+    const sorted = [...list].sort((a, b) => {
+      const pa = a.destacado_piloto ? 0 : 1
+      const pb = b.destacado_piloto ? 0 : 1
+      if (pa !== pb) return pa - pb
+      return order[a.rol_billetera] - order[b.rol_billetera]
+    })
+    if (billeteraFiltro === 'todas') return sorted
+    return sorted.filter(item => item.rol_billetera === billeteraFiltro)
+  }, [presupuestosState.data, billeteraFiltro])
 
-  // Datos derivados SINIM
-  const sinimExpected = sinim.data?.total_comunas_esperadas ?? 10
-  const sinimLoaded = sinim.data?.comunas_cargadas ?? sinim.data?.comunas.length ?? 0
-  const sinimCoveragePct = sinim.data?.cobertura_pct !== undefined && sinim.data?.cobertura_pct !== null
-    ? sinim.data.cobertura_pct
-    : sinimExpected > 0
-      ? (sinimLoaded / sinimExpected) * 100
-      : 0
+  // Proyecto seleccionado en Ficha
+  const selectedProject = useMemo(() => {
+    if (!selectedProjectId || !proyectosState.data) return null
+    return (
+      proyectosState.data.proyectos.find(p => p.id === selectedProjectId) ??
+      proyectosState.data.proyectos_insuficientes.find(p => p.id === selectedProjectId) ??
+      null
+    )
+  }, [selectedProjectId, proyectosState.data])
 
-  const sinimGastoTotalBrutoMillones = useMemo(() => {
-    if (sinim.data?.total_gasto_devengado_millones !== null && sinim.data?.total_gasto_devengado_millones !== undefined) {
-      return sinim.data.total_gasto_devengado_millones
-    }
-    if (!sinim.data?.comunas.length) return null
-    const valid = sinim.data.comunas
-      .map(c => c.gasto_total_devengado_millones)
-      .filter((v): v is number => v !== null && v !== undefined && Number.isFinite(v))
-    if (!valid.length) return null
-    return valid.reduce((acc, v) => acc + v, 0)
-  }, [sinim.data])
-
-  // Datos derivados Simulador (100% reales BCCh)
-  const simAdminBase = resumen?.administracion_publica_millones ?? adminActivity?.valor_millones ?? null
-  const simPibBase = resumen?.aysen_nominal_millones ?? null
-  const simReady = simAdminBase !== null && simPibBase !== null && simPibBase > 0
-
-  const simulation = useMemo(() => {
-    if (!simReady || simAdminBase === null || simPibBase === null) return null
-    const deltaAdmin = simAdminBase * (deltaPct / 100)
-    const deltaPib = deltaAdmin * multiplier
-    const adminSimulated = simAdminBase + deltaAdmin
-    const pibSimulated = simPibBase + deltaPib
-    const impactPibPp = (deltaPib / simPibBase) * 100
-    const baseAdminSharePct = (simAdminBase / simPibBase) * 100
-    const simAdminSharePct = pibSimulated > 0 ? (adminSimulated / pibSimulated) * 100 : null
-    return {
-      deltaAdmin,
-      deltaPib,
-      adminSimulated,
-      pibSimulated,
-      impactPibPp,
-      baseAdminSharePct,
-      simAdminSharePct,
-    }
-  }, [simReady, simAdminBase, simPibBase, deltaPct, multiplier])
-
-  const selectedMultiplierInfo = MULTIPLIERS.find(m => m.value === multiplier) ?? MULTIPLIERS[0]
-
-  // Handlers SINIM Importador
-  function handleFileSelected(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    setSinimUpload(prev => ({
-      ...prev,
-      selectedFileName: file?.name ?? '',
-      successMessage: '',
-      errorMessage: '',
-      rowErrors: [],
-    }))
+  // Handlers SINIM discreto en Presupuestos
+  function handleSinimFileChange(_event: ChangeEvent<HTMLInputElement>) {
+    setSinimUpload(prev => ({ ...prev, successMessage: '', errorMessage: '', rowErrors: [] }))
   }
 
   async function handleSinimImport(event: FormEvent) {
     event.preventDefault()
     const file = fileInputRef.current?.files?.[0]
     if (!file) {
-      setSinimUpload(prev => ({
-        ...prev,
+      setSinimUpload({
+        submitting: false,
+        successMessage: '',
         errorMessage: 'Selecciona un archivo .csv o .json de SINIM antes de importar.',
-        successMessage: '',
         rowErrors: [],
-      }))
+      })
       return
     }
-    const lower = file.name.toLowerCase()
-    if (!lower.endsWith('.csv') && !lower.endsWith('.json')) {
-      setSinimUpload(prev => ({
-        ...prev,
-        errorMessage: 'Formato no admitido. Sube un archivo .csv o .json estructurado según la plantilla oficial.',
-        successMessage: '',
-        rowErrors: [],
-      }))
-      return
-    }
-
-    setSinimUpload(prev => ({
-      ...prev,
-      submitting: true,
-      successMessage: '',
-      errorMessage: '',
-      rowErrors: [],
-    }))
-
+    setSinimUpload({ submitting: true, successMessage: '', errorMessage: '', rowErrors: [] })
     try {
       const content = await file.text()
       if (!content.trim()) {
-        setSinimUpload(prev => ({
-          ...prev,
+        setSinimUpload({
           submitting: false,
+          successMessage: '',
           errorMessage: 'El archivo seleccionado está vacío.',
-        }))
+          rowErrors: [],
+        })
         return
       }
-      const response = await importSinimFile(file.name, content)
-      setSinim({ loading: false, data: response, error: null })
-      const errors = response.errores_validacion ?? []
+      const res = await importSinimFile(file.name, content)
       setSinimUpload({
         submitting: false,
-        selectedFileName: file.name,
-        successMessage: response.mensaje ||
-          `Archivo «${file.name}» procesado. Cobertura actual: ${response.comunas_cargadas} / ${response.total_comunas_esperadas} comunas de Aysén.`,
+        successMessage:
+          res.mensaje ||
+          `Archivo «${file.name}» importado (${res.comunas_cargadas}/${res.total_comunas_esperadas} comunas de Aysén).`,
         errorMessage: '',
-        rowErrors: errors,
+        rowErrors: res.errores_validacion ?? [],
       })
+      setRefreshTick(t => t + 1)
     } catch (err) {
-      const rowErrors = extractSinimErrors(err)
-      setSinimUpload(prev => ({
-        ...prev,
+      setSinimUpload({
         submitting: false,
         successMessage: '',
         errorMessage: err instanceof Error ? err.message : 'No se pudo validar o importar el archivo SINIM.',
-        rowErrors,
-      }))
-    }
-  }
-
-  // Handlers Explorador BCCh
-  async function handleBcchSearch(event: FormEvent) {
-    event.preventDefault()
-    if (!searchTerm.trim()) return
-    setSearchState({ loading: true, data: null, error: null })
-    try {
-      const res = await searchBcchSeries(searchFreq, searchTerm)
-      setSearchState({ loading: false, data: res, error: null })
-    } catch (err) {
-      setSearchState({
-        loading: false,
-        data: null,
-        error: err instanceof Error ? err : new Error('No se pudo consultar el catálogo del BCCh.'),
-      })
-    }
-  }
-
-  async function handleInspectSeries(seriesId: string) {
-    const cleanId = seriesId.trim()
-    if (!cleanId) return
-    setManualSeriesId(cleanId)
-    setSeriesState({ loading: true, data: null, error: null })
-    try {
-      const res = await fetchBcchSeries(cleanId, firstDate || undefined)
-      setSeriesState({ loading: false, data: res, error: null })
-    } catch (err) {
-      setSeriesState({
-        loading: false,
-        data: null,
-        error: err instanceof Error ? err : new Error('No se pudo consultar la serie en el BCCh.'),
+        rowErrors: extractSinimErrors(err),
       })
     }
   }
@@ -658,1013 +1140,846 @@ export function PoliticalView() {
       setDeltaPct(0)
       return
     }
-    const clamped = Math.max(-30, Math.min(30, Math.round(parsed * 2) / 2))
-    setDeltaPct(clamped)
+    setDeltaPct(Math.max(-30, Math.min(30, Math.round(parsed * 2) / 2)))
   }
 
-  const bcchSourceBase: SourceFooterProps = {
-    fuente: bcch.data?.fuente_trazabilidad,
-    institucionFallback: 'Banco Central de Chile (BDE · Cuentas Nacionales)',
-    endpointFallback: '/api/v1/territorial/aysen/estructura',
-    actualizadoEn: bcch.data?.actualizado_en ?? bcch.data?.fuente_trazabilidad?.actualizado_en,
-    extraidoEn: bcch.data?.extraido_en ?? bcch.data?.fuente_trazabilidad?.extraido_en,
+  function handleProjectSearchSubmit(event: FormEvent) {
+    event.preventDefault()
+    setSelectedProjectId(null)
+    setAppliedSearch(searchInput.trim())
   }
 
-  const dipresSourceBase: SourceFooterProps = {
-    fuente: dipres.data?.fuente_trazabilidad,
-    institucionFallback: 'DIPRES · datos.gob.cl (CKAN)',
-    endpointFallback: `/api/v1/fiscal/dipres?anio=${dipresYear}`,
-    actualizadoEn: dipres.data?.actualizado_en ?? dipres.data?.fuente_trazabilidad?.actualizado_en,
-    extraidoEn: dipres.data?.extraido_en ?? dipres.data?.fuente_trazabilidad?.extraido_en,
-  }
+  const triggerRetry = useCallback(() => setRefreshTick(t => t + 1), [])
 
-  const sinimSourceBase: SourceFooterProps = {
-    fuente: sinim.data?.fuente_trazabilidad,
-    institucionFallback: 'SINIM · SUBDERE (Balances Municipales)',
-    endpointFallback: '/api/v1/fiscal/sinim',
-    actualizadoEn: sinim.data?.actualizado_en ?? sinim.data?.fuente_trazabilidad?.actualizado_en,
-    extraidoEn: sinim.data?.extraido_en ?? sinim.data?.fuente_trazabilidad?.extraido_en,
-  }
-
-  const consultadas = bcch.data?.fuente_trazabilidad?.series_consultadas ?? []
-  const bcchAxis1Codes = [
-    resumen?.serie_aysen_nominal,
-    resumen?.serie_chile_nominal,
-    resumen?.serie_aysen_real,
-    resumen?.serie_chile_real,
-    ...consultadas.filter(code => code.includes('.Z.Z.Z.')),
-  ].filter((c, i, arr): c is string => Boolean(c) && arr.indexOf(c) === i)
-
-  const bcchSimCodes = [
-    resumen?.serie_admin_publica || adminActivity?.serie_id,
-    resumen?.serie_aysen_nominal || consultadas.find(code => code.includes('.N.') && code.includes('.11.') && code.includes('.Z.')),
-  ].filter((c, i, arr): c is string => Boolean(c) && arr.indexOf(c) === i)
+  const showComunaSelector = activeTab === 'presupuestos' || activeTab === 'proyectos'
+  const comunaSelectorValue = activeTab === 'proyectos' ? comunaProyectos : comunaPresupuesto
+  const showRegionalPibHint =
+    (activeTab === 'resumen' || activeTab === 'economia') && Boolean(comunaActivaEnCabecera)
 
   return (
-    <div className="political-page">
-      <section className="intro pol-intro">
-        <div>
-          <p className="eyebrow">Observatorio territorial · Región de Aysén (Código 11)</p>
-          <h1>Lectura Política y Estratégica</h1>
-          <p className="lede">
-            Diagnóstico en vivo de la estructura productiva y fiscal de la Región de Aysén del General Carlos Ibáñez del Campo.
-            Cada cifra proviene de consultas directas a BCCh, DIPRES y SINIM con trazabilidad verificable y límites de inferencia explícitos.
-          </p>
+    <div className="aysen-page">
+      {/* ============================================================
+          CABECERA COMPACTA SUPERIOR + CONTROLES COMPARTIDOS + 4 TABS
+      ============================================================ */}
+      <header className="aysen-header">
+        <div className="aysen-header-top">
+          <div>
+            <p className="eyebrow">Región de Aysén · Código 11</p>
+            <h1 className="aysen-title">Observatorio de Aysén</h1>
+            <p className="aysen-subtitle">
+              Economía, presupuestos públicos y obras con respaldo oficial en un toque.
+            </p>
+          </div>
         </div>
-        <div className="pol-status-bar" aria-label="Estado de fuentes en vivo">
-          <div className="pol-source-pill">
-            <span className={`status-dot ${bcch.loading ? 'is-loading' : bcch.error ? 'is-error' : 'is-ok'}`} aria-hidden="true" />
-            <div>
-              <strong>BCCh</strong>
-              <span>
-                {bcch.loading
-                  ? 'Consultando…'
-                  : bcch.error instanceof ApiServiceError && bcch.error.isMissingBcchToken
-                    ? 'Falta token'
-                    : bcch.error
-                      ? 'Sin conexión'
-                      : `Corte ${resumen?.anio ?? 'en vivo'}`}
-              </span>
-            </div>
-          </div>
-          <div className="pol-source-pill">
-            <span className={`status-dot ${dipres.loading ? 'is-loading' : dipres.error ? 'is-error' : 'is-ok'}`} aria-hidden="true" />
-            <div>
-              <strong>DIPRES</strong>
-              <span>
-                {dipres.loading ? 'Consultando…' : dipres.error ? 'Sin conexión' : `Ejercicio ${dipres.data?.anio ?? dipresYear}`}
-              </span>
-            </div>
-          </div>
-          <div className="pol-source-pill">
-            <span className={`status-dot ${sinim.loading ? 'is-loading' : sinim.error ? 'is-error' : sinimLoaded === sinimExpected ? 'is-ok' : 'is-warn'}`} aria-hidden="true" />
-            <div>
-              <strong>SINIM</strong>
-              <span>
-                {sinim.loading ? 'Consultando…' : sinim.error ? 'Sin conexión' : `${sinimLoaded}/${sinimExpected} comunas`}
-              </span>
-            </div>
-          </div>
-          <button
-            type="button"
-            className="secondary-btn"
-            onClick={() => {
-              loadBcch(true)
-              loadDipres(dipresYear, true)
-              loadSinim()
-              loadDemografiaSilenciosa()
-            }}
-          >
-            Actualizar fuentes
-          </button>
-        </div>
-      </section>
 
-      <nav className="pol-toc" aria-label="Navegación por ejes estratégicos">
-        <a href="#eje-1">Eje 1 · Centro-Periferia</a>
-        <a href="#eje-2">Eje 2 · Estado Motor Local</a>
-        <a href="#eje-3">Eje 3 · Rigidez Descentralización</a>
-        <a href="#eje-4">Eje 4 · 3 Billeteras y SINIM</a>
-        <a href="#simulador-aysen">Simulador PIB</a>
-        <a href="#explorador-bcch">Explorador BCCh</a>
-      </nav>
+        {/* Barra de controles compartidos */}
+        <div className="aysen-controls" aria-label="Filtros globales del Observatorio de Aysén">
+          <label className="aysen-control-field" htmlFor={yearSelectId}>
+            <span>Año</span>
+            <select
+              id={yearSelectId}
+              value={anio}
+              onChange={event => {
+                setAnio(Number(event.target.value))
+                setSelectedProjectId(null)
+              }}
+            >
+              {ANIOS_AYSEN.map(y => (
+                <option key={y} value={y}>
+                  {y}{y >= 2026 ? ' (en curso)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {showComunaSelector && (
+            <label className="aysen-control-field" htmlFor={comunaSelectId}>
+              <span>Comuna</span>
+              <select
+                id={comunaSelectId}
+                value={comunaSelectorValue}
+                onChange={event => handleComunaChange(event.target.value)}
+              >
+                {activeTab === 'proyectos' && <option value="">Todas las comunas (10)</option>}
+                {COMUNAS_AYSEN.map(c => (
+                  <option key={c.cut} value={c.cut}>
+                    {c.nombre} ({c.cut})
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+
+        {/* Navegación exclusiva de 4 pestañas */}
+        <div className="aysen-tablist" role="tablist" aria-label="Secciones del Observatorio de Aysén">
+          {TABS.map((tab, idx) => {
+            const isSelected = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                ref={el => { tabRefs.current[tab.id] = el }}
+                id={`tab-${tab.id}`}
+                type="button"
+                role="tab"
+                aria-selected={isSelected}
+                aria-controls={`panel-${tab.id}`}
+                tabIndex={isSelected ? 0 : -1}
+                className="aysen-tab"
+                onClick={() => switchTab(tab.id)}
+                onKeyDown={event => handleTabKeyDown(event, idx)}
+              >
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
+      </header>
 
       {/* ============================================================
-          EJE 1 · PARADOJA CENTRO-PERIFERIA
+          PANEL ACTIVO ÚNICO (STRICT: SOLO RENDERIZA 1 TABPANEL)
       ============================================================ */}
-      <section id="eje-1" className="axis-section" aria-labelledby="eje-1-titulo">
-        <div className="axis-header">
-          <span className="axis-badge">Eje 1</span>
-          <div>
-            <h2 id="eje-1-titulo">Paradoja Centro-Periferia</h2>
-            <p className="subtle">Peso nominal de Aysén en el PIB nacional frente a su dinámica de crecimiento real y su relevancia territorial.</p>
+
+      {activeTab === 'resumen' && (
+        <section
+          id="panel-resumen"
+          role="tabpanel"
+          aria-labelledby="tab-resumen"
+          className="aysen-panel"
+        >
+          <div className="aysen-question-head">
+            <h2>¿Qué pasó en Aysén durante {anio}?</h2>
+            <p className="subtle">
+              Tres respuestas directas con datos oficiales verificables para entender actividad económica, inversión y compromisos heredados.
+            </p>
           </div>
-        </div>
 
-        <div className="axis-grid">
-          <article className="panel axis-main">
-            <h3>Escala macroeconómica de Aysén frente a Chile</h3>
-            {bcch.loading ? (
-              <LoadingSkeleton label="Consultando series oficiales de PIB regional y nacional en BCCh…" />
-            ) : bcch.error ? (
-              <ServiceErrorBox error={bcch.error} onRetry={() => loadBcch(true)} />
-            ) : !resumen ? (
-              <p className="empty">El servicio BCCh no devolvió un resumen de PIB para el período solicitado.</p>
-            ) : (
-              <>
-                {bcch.data?.estado_actualizacion === 'respaldo_ultimo_corte_aprobado' && (
-                  <p className="notice" role="status">
-                    <strong>Respaldo del último corte aprobado (BCCh):</strong>{' '}
-                    {bcch.data.advertencia_respaldo ||
-                      'La actualización en vivo no respondió; se muestran las observaciones verificadas del último corte oficial guardado.'}
+          {showRegionalPibHint && (
+            <p className="aysen-hint-bar" role="note">
+              Comuna seleccionada para presupuestos: <strong>{getComunaNombre(comunaActivaEnCabecera)}</strong>. El PIB se mide únicamente a escala regional (Región de Aysén).
+            </p>
+          )}
+
+          {resumenState.loading ? (
+            <LoadingCard label={`Consultando el resumen oficial de Aysén para ${anio}…`} />
+          ) : resumenState.error ? (
+            <ErrorNotice error={resumenState.error} onRetry={triggerRetry} />
+          ) : !resumenState.data ? (
+            <p className="aysen-empty">Sin dato disponible para {anio}.</p>
+          ) : (
+            <>
+              {resumenState.data.en_curso && (
+                <InProgressBanner
+                  anio={resumenState.data.anio}
+                  mesCorteNombre={resumenState.data.mes_corte_nombre}
+                  aviso={resumenState.data.aviso_anio_en_curso}
+                />
+              )}
+
+              <div className="aysen-summary-grid">
+                {/* Tarjeta 1: Evolución económica */}
+                <article className="aysen-card aysen-summary-card">
+                  <div className="aysen-card-top">
+                    <span className="aysen-card-kicker">1 · Evolución económica</span>
+                    <span className="aysen-territory-tag is-regional">Región de Aysén</span>
+                  </div>
+
+                  <p className={`aysen-big-figure${!resumenState.data.evolucion_economica.disponible ? ' is-missing' : ''}`}>
+                    {resumenState.data.evolucion_economica.crecimiento_real_pct !== null
+                      ? fmtPct(resumenState.data.evolucion_economica.crecimiento_real_pct, true)
+                      : 'Sin dato disponible'}
                   </p>
-                )}
+                  <p className="aysen-figure-caption">
+                    Crecimiento real del PIB regional ({anio})
+                    {resumenState.data.evolucion_economica.crecimiento_chile_pct !== null && (
+                      <> · Chile: <strong>{fmtPct(resumenState.data.evolucion_economica.crecimiento_chile_pct, true)}</strong></>
+                    )}
+                  </p>
 
-                <div className="pol-kpi-grid">
-                  <div className="pol-kpi-card is-highlight">
-                    <span className="kpi-label">Participación en PIB nacional nominal ({resumen.anio ?? '—'})</span>
-                    <strong className="pol-kpi-num">{fmtPct(resumen.participacion_nacional_pct)}</strong>
-                    <span className="kpi-meta">Precios corrientes · Aysén / Chile</span>
-                  </div>
-                  <div className="pol-kpi-card">
-                    <span className="kpi-label">PIB nominal Aysén ({resumen.anio ?? '—'})</span>
-                    <strong className="pol-kpi-num">{fmtMillions(resumen.aysen_nominal_millones)}</strong>
-                    <span className="kpi-meta">Chile: {fmtMillions(resumen.chile_nominal_millones)}</span>
-                  </div>
-                  <div className="pol-kpi-card">
-                    <span className="kpi-label">PIB real Aysén ({resumen.anio ?? '—'})</span>
-                    <strong className="pol-kpi-num">{fmtMillions(resumen.aysen_real_millones)}</strong>
-                    <span className="kpi-meta">Volumen encadenado (no aditivo) · Chile: {fmtMillions(resumen.chile_real_millones)}</span>
-                  </div>
-                  <div className="pol-kpi-card">
-                    <span className="kpi-label">Crecimiento real anual ({resumen.anio ?? '—'})</span>
-                    <strong className="pol-kpi-num">{fmtPct(resumen.crecimiento_real_aysen_pct, true)}</strong>
-                    <span className="kpi-meta">Referencia Chile: {fmtPct(resumen.crecimiento_real_chile_pct, true)}</span>
-                  </div>
-                </div>
+                  {resumenState.data.evolucion_economica.frase_radial ? (
+                    <blockquote className="aysen-radio-quote">
+                      «{resumenState.data.evolucion_economica.frase_radial}»
+                    </blockquote>
+                  ) : resumenState.data.evolucion_economica.sin_dato_motivo ? (
+                    <p className="subtle">{resumenState.data.evolucion_economica.sin_dato_motivo}</p>
+                  ) : null}
 
-                {/* Visualización comparativa de peso y crecimiento real */}
-                <div className="visual-card">
-                  <h4>Comparación visual · Peso nominal y variación real ({resumen.anio ?? '—'})</h4>
-                  <div className="compare-bars" role="img" aria-label={`Participación nominal de Aysén ${fmtPct(resumen.participacion_nacional_pct)} y crecimiento real Aysén ${fmtPct(resumen.crecimiento_real_aysen_pct, true)} frente a Chile ${fmtPct(resumen.crecimiento_real_chile_pct, true)}`}>
-                    <div className="compare-bar-row">
-                      <span className="compare-bar-label">Peso nominal de Aysén en Chile</span>
-                      <div className="compare-track" aria-hidden="true">
-                        <div
-                          className="compare-fill is-primary"
-                          style={{
-                            width: `${resumen.participacion_nacional_pct !== null ? Math.min(100, Math.max(1.5, resumen.participacion_nacional_pct)) : 0}%`,
-                          }}
-                        />
-                      </div>
-                      <span className="compare-bar-val">{fmtPct(resumen.participacion_nacional_pct)}</span>
+                  <dl className="aysen-inline-meta">
+                    <div>
+                      <dt>Período</dt>
+                      <dd>{resumenState.data.evolucion_economica.periodo || String(anio)}</dd>
                     </div>
+                    <div>
+                      <dt>Unidad</dt>
+                      <dd>{resumenState.data.evolucion_economica.unidad || 'Variación real anual (%)'}</dd>
+                    </div>
+                    <div>
+                      <dt>Cobertura</dt>
+                      <dd>{resumenState.data.evolucion_economica.cobertura || 'Región de Aysén (BCCh)'}</dd>
+                    </div>
+                  </dl>
 
-                    {(() => {
-                      const a = resumen.crecimiento_real_aysen_pct
-                      const c = resumen.crecimiento_real_chile_pct
-                      const maxAbs = Math.max(1, Math.abs(a ?? 0), Math.abs(c ?? 0))
-                      return (
-                        <>
-                          <div className="compare-bar-row">
-                            <span className="compare-bar-label">Crecimiento real Aysén</span>
-                            <div className="compare-track is-diverging" aria-hidden="true">
-                              {a !== null && (
-                                <div
-                                  className={`compare-fill ${a < 0 ? 'is-negative' : 'is-primary'}`}
-                                  style={{
-                                    width: `${(Math.abs(a) / maxAbs) * 50}%`,
-                                    left: `${a < 0 ? 50 - (Math.abs(a) / maxAbs) * 50 : 50}%`,
-                                  }}
-                                />
-                              )}
-                            </div>
-                            <span className="compare-bar-val">{fmtPct(a, true)}</span>
-                          </div>
-                          <div className="compare-bar-row">
-                            <span className="compare-bar-label">Crecimiento real Chile</span>
-                            <div className="compare-track is-diverging" aria-hidden="true">
-                              {c !== null && (
-                                <div
-                                  className={`compare-fill ${c < 0 ? 'is-negative' : 'is-reference'}`}
-                                  style={{
-                                    width: `${(Math.abs(c) / maxAbs) * 50}%`,
-                                    left: `${c < 0 ? 50 - (Math.abs(c) / maxAbs) * 50 : 50}%`,
-                                  }}
-                                />
-                              )}
-                            </div>
-                            <span className="compare-bar-val">{fmtPct(c, true)}</span>
-                          </div>
-                        </>
-                      )
-                    })()}
+                  <div className="aysen-card-actions">
+                    <button
+                      type="button"
+                      className="aysen-cta-btn"
+                      onClick={() => switchTab('economia')}
+                    >
+                      Ver en Economía <span aria-hidden="true">→</span>
+                    </button>
+                    <SourceLink fuente={resumenState.data.evolucion_economica.fuente} />
+                  </div>
+                </article>
+
+                {/* Tarjeta 2: Inversión pública registrada */}
+                <article className="aysen-card aysen-summary-card">
+                  <div className="aysen-card-top">
+                    <span className="aysen-card-kicker">2 · Inversión pública registrada</span>
+                    {resumenState.data.inversion_publica.variacion_mismo_periodo_pct !== null && (
+                      <span className="aysen-pill-accent">
+                        {fmtPct(resumenState.data.inversion_publica.variacion_mismo_periodo_pct, true)} vs mismo período
+                      </span>
+                    )}
                   </div>
 
-                  <div className="table-scroll pol-table-gap" tabIndex={0} role="region" aria-label="Tabla resumen PIB Aysén frente a Chile">
-                    <table className="pol-table">
-                      <caption className="sr-only">Indicadores macroeconómicos oficiales de Aysén y Chile en {resumen.anio ?? 'último año disponible'}</caption>
-                      <thead>
-                        <tr>
-                          <th scope="col">Indicador</th>
-                          <th scope="col" className="numeric">Aysén (Región 11)</th>
-                          <th scope="col" className="numeric">Chile (Total)</th>
-                          <th scope="col">Valoración</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <th scope="row">PIB nominal ({resumen.anio ?? '—'})</th>
-                          <td className="numeric">{fmtMillions(resumen.aysen_nominal_millones)}</td>
-                          <td className="numeric">{fmtMillions(resumen.chile_nominal_millones)}</td>
-                          <td>Precios corrientes</td>
-                        </tr>
-                        <tr>
-                          <th scope="row">PIB real ({resumen.anio ?? '—'})</th>
-                          <td className="numeric">{fmtMillions(resumen.aysen_real_millones)}</td>
-                          <td className="numeric">{fmtMillions(resumen.chile_real_millones)}</td>
-                          <td>Volumen encadenado</td>
-                        </tr>
-                        <tr>
-                          <th scope="row">Crecimiento real anual</th>
-                          <td className="numeric">{fmtPct(resumen.crecimiento_real_aysen_pct, true)}</td>
-                          <td className="numeric">{fmtPct(resumen.crecimiento_real_chile_pct, true)}</td>
-                          <td>Variación anual volumen</td>
-                        </tr>
-                        <tr>
-                          <th scope="row">Participación nominal en el país</th>
-                          <td className="numeric">{fmtPct(resumen.participacion_nacional_pct)}</td>
-                          <td className="numeric">100,00%</td>
-                          <td>Precios corrientes</td>
-                        </tr>
-                        {perCapitaEje1 && (
-                          <>
-                            <tr className="row-admin">
-                              <th scope="row">PIB per cápita real ({perCapitaEje1.anio} · BCCh + INE)</th>
-                              <td className="numeric">{fmtClp(perCapitaEje1.aysen.pib_per_capita_real_clp)}</td>
-                              <td className="numeric">{fmtClp(perCapitaEje1.chile?.pib_per_capita_real_clp)}</td>
-                              <td>
-                                CLP/hab. · Aysén = {perCapitaEje1.aysen.indice_real_chile_100 !== null ? num1.format(perCapitaEje1.aysen.indice_real_chile_100) : '—'} (Chile = 100)
-                              </td>
-                            </tr>
-                            <tr className="row-admin">
-                              <th scope="row">PIB per cápita nominal ({perCapitaEje1.anio} · BCCh + INE)</th>
-                              <td className="numeric">{fmtClp(perCapitaEje1.aysen.pib_per_capita_nominal_clp)}</td>
-                              <td className="numeric">{fmtClp(perCapitaEje1.chile?.pib_per_capita_nominal_clp)}</td>
-                              <td>
-                                CLP/hab. · Aysén = {perCapitaEje1.aysen.indice_nominal_chile_100 !== null ? num1.format(perCapitaEje1.aysen.indice_nominal_chile_100) : '—'} (Chile = 100)
-                              </td>
-                            </tr>
-                          </>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                  {perCapitaEje1 && (
-                    <div className="eje1-pc-banner">
-                      <div>
-                        <strong>PIB per cápita oficial acoplado (BCCh + INE · {perCapitaEje1.anio}):</strong>{' '}
-                        Aysén registra <strong>{fmtClp(perCapitaEje1.aysen.pib_per_capita_real_clp)}</strong> reales por habitante
-                        {perCapitaEje1.chile?.pib_per_capita_real_clp !== null && perCapitaEje1.chile?.pib_per_capita_real_clp !== undefined
-                          ? ` frente a ${fmtClp(perCapitaEje1.chile.pib_per_capita_real_clp)} en Chile`
-                          : ''}
-                        {' '}(nominal: {fmtClp(perCapitaEje1.aysen.pib_per_capita_nominal_clp)} vs {fmtClp(perCapitaEje1.chile?.pib_per_capita_nominal_clp)}).
-                      </div>
-                      <a className="secondary-btn link-btn" href="#demografia">
-                        Ver módulo PIB per Cápita y Convergencia →
-                      </a>
+                  <p className={`aysen-big-figure${!resumenState.data.inversion_publica.disponible ? ' is-missing' : ''}`}>
+                    {resumenState.data.inversion_publica.monto_millones !== null
+                      ? fmtMillions(resumenState.data.inversion_publica.monto_millones)
+                      : 'Sin dato disponible'}
+                  </p>
+                  <p className="aysen-figure-caption">
+                    {resumenState.data.inversion_publica.periodo_comparado ||
+                      `Ejecución de inversión registrada (${anio})`}
+                  </p>
+
+                  {resumenState.data.inversion_publica.instituciones_cubiertas.length > 0 && (
+                    <div className="aysen-covered-block">
+                      <span className="aysen-covered-label">Instituciones cubiertas:</span>
+                      <ul className="aysen-chip-list">
+                        {resumenState.data.inversion_publica.instituciones_cubiertas.map(inst => (
+                          <li key={inst}>{inst}</li>
+                        ))}
+                      </ul>
                     </div>
                   )}
-                  <SourceFooter
-                    {...bcchSourceBase}
-                    seriesCodigos={bcchAxis1Codes}
-                    notaExtra="Valores nominales y reales se reportan por separado respetando la no aditividad de volúmenes encadenados."
-                  />
-                </div>
-              </>
-            )}
-            <SourceFooter {...bcchSourceBase} seriesCodigos={bcchAxis1Codes} />
-          </article>
 
-          <KeyTerritorialCard
-            ejeLabel="Eje 1 · Paradoja Centro-Periferia"
-            title="Bajo peso agregado, alta relevancia geoestratégica"
-            summary={
-              <>
-                <p>
-                  En el corte oficial vigente del Banco Central{resumen?.anio ? ` (${resumen.anio})` : ''}, Aysén representa{' '}
-                  <strong>{resumen ? fmtPct(resumen.participacion_nacional_pct) : 'sin dato oficial disponible'}</strong> del PIB nominal de Chile.
-                  Esta fracción reducida en la escala agregada nacional suele invisibilizar a la región en reglas de asignación central basadas en volumen bruto.
-                </p>
-                {perCapitaEje1 ? (
-                  <p>
-                    Al cruzar las cuentas regionales del <strong>BCCh</strong> con la población oficial del <strong>INE ({perCapitaEje1.anio})</strong>, el{' '}
-                    <strong>PIB per cápita real de Aysén alcanza {fmtClp(perCapitaEje1.aysen.pib_per_capita_real_clp)}</strong>{' '}
-                    (nominal: <strong>{fmtClp(perCapitaEje1.aysen.pib_per_capita_nominal_clp)}</strong>), frente a{' '}
-                    <strong>{fmtClp(perCapitaEje1.chile?.pib_per_capita_real_clp)}</strong> reales en Chile
-                    {perCapitaEje1.aysen.indice_real_chile_100 !== null
-                      ? ` (índice ${num1.format(perCapitaEje1.aysen.indice_real_chile_100)} con Chile = 100)`
-                      : ''}.
-                    El bajo peso agregado coexiste así con una producción por habitante comparable o superior al promedio nacional.
+                  {resumenState.data.inversion_publica.frase_radial ? (
+                    <blockquote className="aysen-radio-quote">
+                      «{resumenState.data.inversion_publica.frase_radial}»
+                    </blockquote>
+                  ) : resumenState.data.inversion_publica.sin_dato_motivo ? (
+                    <p className="subtle">{resumenState.data.inversion_publica.sin_dato_motivo}</p>
+                  ) : null}
+
+                  <dl className="aysen-inline-meta">
+                    <div>
+                      <dt>Período</dt>
+                      <dd>{resumenState.data.inversion_publica.periodo || String(anio)}</dd>
+                    </div>
+                    <div>
+                      <dt>Unidad</dt>
+                      <dd>{resumenState.data.inversion_publica.unidad || 'Millones de pesos ($ MM)'}</dd>
+                    </div>
+                    <div>
+                      <dt>Cobertura</dt>
+                      <dd>{resumenState.data.inversion_publica.cobertura || 'Instituciones con corte oficial'}</dd>
+                    </div>
+                  </dl>
+
+                  <div className="aysen-card-actions">
+                    <button
+                      type="button"
+                      className="aysen-cta-btn"
+                      onClick={() => switchTab('presupuestos')}
+                    >
+                      Ver en Presupuestos <span aria-hidden="true">→</span>
+                    </button>
+                    <SourceLink fuente={resumenState.data.inversion_publica.fuente} />
+                  </div>
+                </article>
+
+                {/* Tarjeta 3: Compromisos de años anteriores (arrastre) */}
+                <article className="aysen-card aysen-summary-card">
+                  <div className="aysen-card-top">
+                    <span className="aysen-card-kicker">3 · Compromisos de años anteriores</span>
+                    <span className="aysen-arrastre-badge is-arrastre">Arrastre</span>
+                  </div>
+
+                  <p className={`aysen-big-figure${!resumenState.data.arrastre.disponible ? ' is-missing' : ''}`}>
+                    {resumenState.data.arrastre.porcentaje_pct !== null
+                      ? fmtPct(resumenState.data.arrastre.porcentaje_pct)
+                      : resumenState.data.arrastre.monto_millones !== null
+                        ? fmtMillions(resumenState.data.arrastre.monto_millones)
+                        : 'Sin dato disponible'}
                   </p>
-                ) : (
-                  <p>
-                    Sin embargo, Aysén ocupa una vasta superficie austral con baja densidad poblacional y valor geoestratégico en conectividad, soberanía y recursos naturales.
-                    <strong> Nota sobre PIB per cápita:</strong> el cálculo per cápita exacto queda explícitamente pendiente de acoplar la serie censal y de proyecciones poblacionales oficiales del <strong>INE</strong>; este observatorio no introduce denominadores demográficos fijos.
+                  <p className="aysen-figure-caption">
+                    {resumenState.data.arrastre.monto_millones !== null && resumenState.data.arrastre.porcentaje_pct !== null
+                      ? `Equivale a ${fmtMillions(resumenState.data.arrastre.monto_millones)}`
+                      : 'Arrastre documentado en obras de inversión'}
+                    {resumenState.data.arrastre.base_calculo ? ` · ${resumenState.data.arrastre.base_calculo}` : ''}
                   </p>
-                )}
-              </>
-            }
-            evidenciaFavorable="La participación nominal observada confirma un peso reducido en el total nacional, lo que genera asimetría de visibilidad cuando los criterios fiscales premian escala poblacional o recaudación agregada."
-            evidenciaContraria="Un bajo peso agregado no implica por sí mismo estancamiento económico: la variación real anual y el producto por habitante de Aysén pueden divergir significativamente del promedio nacional por escala demográfica y shocks sectoriales específicos."
-            limiteInferencia="El PIB nominal y per cápita regional miden producción localizada en el territorio (escala nacional y regional, nunca imputable a comunas) y no equivalen directamente al ingreso disponible de los hogares."
-            source={{ ...bcchSourceBase, seriesCodigos: bcchAxis1Codes }}
-          />
-        </div>
-      </section>
 
-      {/* ============================================================
-          EJE 2 · EL ESTADO COMO MOTOR ECONÓMICO LOCAL
-      ============================================================ */}
-      <section id="eje-2" className="axis-section" aria-labelledby="eje-2-titulo">
-        <div className="axis-header">
-          <span className="axis-badge">Eje 2</span>
-          <div>
-            <h2 id="eje-2-titulo">El Estado como Motor Económico Local</h2>
-            <p className="subtle">Desglose de las 13 actividades económicas oficiales de Aysén, concentración HHI y seguimiento trimestral reciente.</p>
-          </div>
-        </div>
+                  {resumenState.data.arrastre.frase_radial ? (
+                    <blockquote className="aysen-radio-quote">
+                      «{resumenState.data.arrastre.frase_radial}»
+                    </blockquote>
+                  ) : resumenState.data.arrastre.sin_dato_motivo ? (
+                    <p className="subtle">{resumenState.data.arrastre.sin_dato_motivo}</p>
+                  ) : null}
 
-        <div className="axis-grid">
-          <article className="panel axis-main">
-            <div className="axis-main-top">
-              <div>
-                <h3>Estructura sectorial del PIB nominal de Aysén</h3>
-                <p className="subtle">
-                  Series oficiales <code className="mono">F035.PIB.FLU.N.CLP.2018.*.11.0.A</code>
-                  {resumen?.anio ? ` · Año ${resumen.anio}` : ''}
-                </p>
+                  <dl className="aysen-inline-meta">
+                    <div>
+                      <dt>Período</dt>
+                      <dd>{resumenState.data.arrastre.periodo || String(anio)}</dd>
+                    </div>
+                    <div>
+                      <dt>Unidad</dt>
+                      <dd>{resumenState.data.arrastre.unidad || '% y millones CLP'}</dd>
+                    </div>
+                    <div>
+                      <dt>Cobertura</dt>
+                      <dd>
+                        {resumenState.data.arrastre.cobertura ||
+                          (resumenState.data.arrastre.total_proyectos_evaluados !== null
+                            ? `${resumenState.data.arrastre.total_proyectos_evaluados} obras evaluadas`
+                            : 'Registro de contratos con fecha verificada')}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <div className="aysen-card-actions">
+                    <button
+                      type="button"
+                      className="aysen-cta-btn"
+                      onClick={() => switchTab('proyectos')}
+                    >
+                      Ver en Proyectos <span aria-hidden="true">→</span>
+                    </button>
+                    <SourceLink fuente={resumenState.data.arrastre.fuente} />
+                  </div>
+                </article>
               </div>
-              {bcch.data && actividadesOrdenadas.length > 0 && (
-                <div className="view-switch compact-switch" role="group" aria-label="Formato de actividades económicas">
-                  <button type="button" aria-pressed={axis2Mode === 'bars'} onClick={() => setAxis2Mode('bars')}>
-                    Barras proporcionales
-                  </button>
-                  <button type="button" aria-pressed={axis2Mode === 'table'} onClick={() => setAxis2Mode('table')}>
-                    Tabla completa
-                  </button>
-                </div>
+            </>
+          )}
+        </section>
+      )}
+
+      {activeTab === 'economia' && (
+        <section
+          id="panel-economia"
+          role="tabpanel"
+          aria-labelledby="tab-economia"
+          className="aysen-panel"
+        >
+          <div className="aysen-question-head">
+            <h2>¿De qué vive Aysén y cómo ha cambiado?</h2>
+            <p className="subtle">
+              Actividad económica regional oficial del Banco Central de Chile (Cuentas Nacionales).
+            </p>
+          </div>
+
+          {showRegionalPibHint && (
+            <p className="aysen-hint-bar" role="note">
+              El PIB se publica solo a escala regional (<strong>Región de Aysén</strong>). Tu filtro comunal ({getComunaNombre(comunaActivaEnCabecera)}) se conserva para Presupuestos y Proyectos.
+            </p>
+          )}
+
+          {economiaState.loading ? (
+            <LoadingCard label={`Consultando Cuentas Nacionales de Aysén para ${anio}…`} />
+          ) : economiaState.error ? (
+            <ErrorNotice error={economiaState.error} onRetry={triggerRetry} />
+          ) : !economiaState.data ? (
+            <p className="aysen-empty">Sin dato disponible para el año {anio}.</p>
+          ) : (
+            <>
+              {(economiaState.data.en_curso || economiaState.data.aviso_periodo) && (
+                <InProgressBanner
+                  anio={economiaState.data.anio}
+                  mesCorteNombre={economiaState.data.mes_corte_nombre}
+                  aviso={
+                    economiaState.data.aviso_periodo ||
+                    `El PIB regional anual de ${economiaState.data.anio} se publica una vez cerrado el año calendario. Se muestran las series oficiales disponibles hasta ${economiaState.data.anio_datos ?? 'el último cierre publicado'}.`
+                  }
+                />
               )}
-            </div>
 
-            {bcch.loading ? (
-              <LoadingSkeleton label="Consultando las 13 actividades económicas y series trimestrales de Aysén en BCCh…" />
-            ) : bcch.error ? (
-              <ServiceErrorBox error={bcch.error} onRetry={() => loadBcch(true)} />
-            ) : !bcch.data || actividadesOrdenadas.length === 0 ? (
-              <p className="empty">No se recibieron observaciones de actividades económicas para Aysén en este corte.</p>
-            ) : (
-              <>
-                <div className="pol-kpi-grid is-three">
-                  <div className="pol-kpi-card is-highlight">
-                    <span className="kpi-label">Administración Pública</span>
-                    <strong className="pol-kpi-num">
-                      {fmtPct(resumen?.administracion_publica_pct ?? adminActivity?.participacion_pct)}
-                    </strong>
-                    <span className="kpi-meta">
-                      {fmtMillions(resumen?.administracion_publica_millones ?? adminActivity?.valor_millones)}
-                    </span>
+              {/* Gráfico principal único + selector de 3 vistas */}
+              <article className="aysen-card aysen-chart-card">
+                <div className="aysen-chart-header">
+                  <div>
+                    <span className="aysen-territory-tag is-regional">Región de Aysén</span>
+                    <h3>
+                      {ecoView === 'crecimiento'
+                        ? 'Crecimiento real del PIB (Aysén vs Chile)'
+                        : ecoView === 'participacion'
+                          ? 'Participación de Aysén en el PIB nacional (%)'
+                          : `Peso por actividad productiva (${economiaState.data.anio_datos ?? anio})`}
+                    </h3>
                   </div>
-                  <div className="pol-kpi-card">
-                    <span className="kpi-label">Pesca y Acuicultura</span>
-                    <strong className="pol-kpi-num">
-                      {fmtPct(resumen?.pesca_pct ?? pescaActivity?.participacion_pct)}
-                    </strong>
-                    <span className="kpi-meta">
-                      {fmtMillions(resumen?.pesca_millones ?? pescaActivity?.valor_millones)}
-                    </span>
-                  </div>
-                  <div className="pol-kpi-card">
-                    <span className="kpi-label">Índice de concentración HHI</span>
-                    <strong className="pol-kpi-num">
-                      {hhiInfo.indice !== null ? num0.format(hhiInfo.indice) : 'Sin dato'}
-                    </strong>
-                    <span className="kpi-meta">
-                      {hhiInfo.interpretacion || `Escala ${hhiInfo.escala} · ${actividadesOrdenadas.length} actividades`}
-                    </span>
+
+                  <div className="aysen-view-pills" role="group" aria-label="Vista del gráfico económico">
+                    <button
+                      type="button"
+                      aria-pressed={ecoView === 'crecimiento'}
+                      onClick={() => setEcoView('crecimiento')}
+                    >
+                      Crecimiento real del PIB
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={ecoView === 'participacion'}
+                      onClick={() => setEcoView('participacion')}
+                    >
+                      Participación en el PIB nacional
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={ecoView === 'actividades'}
+                      onClick={() => setEcoView('actividades')}
+                    >
+                      Peso por actividad productiva
+                    </button>
                   </div>
                 </div>
 
-                <div className="visual-card">
-                  <h4>Participación por actividad económica ({actividadesOrdenadas.length} actividades oficiales)</h4>
-                  {axis2Mode === 'bars' ? (
-                    <ul className="activity-chart" aria-label="Participación de las actividades económicas en el PIB nominal de Aysén">
-                      {actividadesOrdenadas.map(item => {
-                        const highlightAdmin = isAdminPublica(item)
-                        const highlightPesca = isPesca(item)
-                        const widthPct = item.participacion_pct !== null && maxActivityPct > 0
-                          ? Math.max(1.5, (item.participacion_pct / maxActivityPct) * 100)
-                          : 0
+                {ecoView === 'crecimiento' && (
+                  <CrecimientoChart
+                    serie={economiaState.data.serie_crecimiento}
+                    selectedYear={anio}
+                    onSelectYear={y => setAnio(y)}
+                  />
+                )}
+
+                {ecoView === 'participacion' && (
+                  <ParticipacionChart
+                    serie={economiaState.data.serie_participacion}
+                    selectedYear={anio}
+                    onSelectYear={y => setAnio(y)}
+                  />
+                )}
+
+                {ecoView === 'actividades' && (
+                  actividadesOrdenadas.length === 0 ? (
+                    <p className="aysen-empty">
+                      Sin dato disponible de actividades productivas nominales para {anio}.
+                    </p>
+                  ) : (
+                    <ul className="aysen-activity-list" aria-label="Peso de las actividades productivas de Aysén">
+                      {actividadesOrdenadas.map(act => {
+                        const pct = act.participacion_pct ?? 0
+                        const width = Math.max(2, (pct / maxActivityPct) * 100)
                         return (
                           <li
-                            key={item.serie_id || item.codigo}
-                            className={`activity-row${highlightAdmin ? ' is-admin' : highlightPesca ? ' is-pesca' : ''}`}
+                            key={act.codigo}
+                            className={`aysen-activity-item${act.es_administracion_publica ? ' is-admin' : act.es_pesca ? ' is-pesca' : ''}`}
                           >
-                            <div className="activity-name">
-                              <span>{item.nombre}</span>
-                              {highlightAdmin && <span className="mini-tag is-admin">Estado</span>}
-                              {highlightPesca && <span className="mini-tag is-pesca">Sector exportador</span>}
+                            <div className="aysen-activity-top">
+                              <span className="aysen-activity-name">
+                                {act.nombre}
+                                {act.es_administracion_publica && <span className="mini-tag is-admin">Estado</span>}
+                                {act.es_pesca && <span className="mini-tag is-pesca">Pesca</span>}
+                              </span>
+                              <span className="aysen-activity-val">
+                                <strong>{fmtPct(act.participacion_pct)}</strong>
+                                <small>{fmtMillions(act.valor_millones)}</small>
+                              </span>
                             </div>
-                            <span className="activity-track" aria-hidden="true">
-                              {item.participacion_pct !== null && (
-                                <span className="activity-bar" style={{ width: `${widthPct}%` }} />
-                              )}
-                            </span>
-                            <div className="activity-values">
-                              <strong>{fmtPct(item.participacion_pct)}</strong>
-                              <span className="subtle">{fmtMillions(item.valor_millones)}</span>
+                            <div className="aysen-activity-track" aria-hidden="true">
+                              <span className="aysen-activity-fill" style={{ width: `${width}%` }} />
                             </div>
                           </li>
                         )
                       })}
                     </ul>
+                  )
+                )}
+              </article>
+
+              {/* Frase destacada: tamaño vs aporte al crecimiento */}
+              <aside className="aysen-callout" aria-label="Cómo leer tamaño versus crecimiento">
+                <strong>Tamaño de una actividad ≠ aporte al crecimiento del año</strong>
+                <p>
+                  {economiaState.data.frase_tamano_vs_aporte ||
+                    'El peso de cada actividad muestra qué parte de la economía representa en pesos corrientes (tamaño), mientras que el aporte al crecimiento depende de cuánto varió su producción real en el año multiplicado por su peso. Un sector pequeño puede explicar gran parte del crecimiento si tiene un salto fuerte.'}
+                </p>
+              </aside>
+
+              {/* Tarjetas de sectores que crecieron y cayeron */}
+              <div className="aysen-sectors-grid">
+                <article className="aysen-card aysen-sector-card is-up">
+                  <h3>Sectores que más crecieron</h3>
+                  {economiaState.data.sectores_crecieron.length === 0 ? (
+                    <p className="subtle">Sin dato disponible para el año seleccionado.</p>
                   ) : (
-                    <div className="table-scroll" tabIndex={0} role="region" aria-label="Tabla de actividades económicas de Aysén">
-                      <table className="pol-table">
-                        <caption className="sr-only">Actividades económicas oficiales de Aysén, valor nominal en millones CLP y participación porcentual</caption>
-                        <thead>
-                          <tr>
-                            <th scope="col">Actividad económica</th>
-                            <th scope="col">Serie BDE</th>
-                            <th scope="col" className="numeric">Valor (MM$ CLP)</th>
-                            <th scope="col" className="numeric">Participación</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {actividadesOrdenadas.map(item => (
-                            <tr
-                              key={item.serie_id || item.codigo}
-                              className={isAdminPublica(item) ? 'row-admin' : isPesca(item) ? 'row-pesca' : undefined}
-                            >
-                              <th scope="row">{item.nombre}</th>
-                              <td className="mono">{item.serie_id}</td>
-                              <td className="numeric">{fmtMillions(item.valor_millones)}</td>
-                              <td className="numeric">{fmtPct(item.participacion_pct)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                  <SourceFooter
-                    {...bcchSourceBase}
-                    seriesCodigos={actividadesOrdenadas.slice(0, 3).map(a => a.serie_id)}
-                    notaExtra={`Total series sectoriales consultadas: ${actividadesOrdenadas.length}.`}
-                  />
-                </div>
-
-                {/* Observaciones trimestrales recientes */}
-                {bcch.data.trimestral && bcch.data.trimestral.length > 0 && (
-                  <div className="visual-card">
-                    <h4>Seguimiento trimestral reciente (coyuntura Aysén)</h4>
-                    <div className="quarterly-grid">
-                      {bcch.data.trimestral.map(serie => {
-                        const latestObs = serie.observaciones?.at(-1)
-                        const recent = (serie.observaciones ?? []).slice(-4).reverse()
-                        return (
-                          <div key={serie.serie_id} className="quarterly-card">
-                            <div className="quarterly-head">
-                              <strong>{serie.nombre}</strong>
-                              <code className="mono">{serie.serie_id}</code>
-                            </div>
-                            <div className="quarterly-highlight">
-                              <span>Último dato ({serie.ultimo_periodo ?? latestObs?.periodo ?? latestObs?.fecha ?? '—'}):</span>
-                              <strong>
-                                {serie.ultima_variacion_pct !== undefined && serie.ultima_variacion_pct !== null
-                                  ? fmtPct(serie.ultima_variacion_pct, true)
-                                  : latestObs?.variacion_interanual_pct !== undefined && latestObs?.variacion_interanual_pct !== null
-                                    ? fmtPct(latestObs.variacion_interanual_pct, true)
-                                    : serie.ultimo_valor !== undefined && serie.ultimo_valor !== null
-                                      ? num2.format(serie.ultimo_valor)
-                                      : latestObs?.valor !== null && latestObs?.valor !== undefined
-                                        ? num2.format(latestObs.valor)
-                                        : 'Sin dato'}
-                              </strong>
-                            </div>
-                            {recent.length > 0 && (
-                              <div className="table-scroll" tabIndex={0} role="region" aria-label={`Últimos trimestres de ${serie.nombre}`}>
-                                <table className="pol-table is-compact">
-                                  <thead>
-                                    <tr>
-                                      <th scope="col">Período</th>
-                                      <th scope="col" className="numeric">Valor</th>
-                                      <th scope="col" className="numeric">Var. interanual</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {recent.map((obs, idx) => (
-                                      <tr key={`${serie.serie_id}-${obs.fecha}-${idx}`}>
-                                        <td>{obs.periodo || obs.fecha}</td>
-                                        <td className="numeric">{obs.valor !== null ? num2.format(obs.valor) : 'Sin dato'}</td>
-                                        <td className="numeric">
-                                          {obs.variacion_interanual_pct !== undefined && obs.variacion_interanual_pct !== null
-                                            ? fmtPct(obs.variacion_interanual_pct, true)
-                                            : '—'}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
+                    <ul className="aysen-sector-list">
+                      {economiaState.data.sectores_crecieron.map(s => (
+                        <li key={s.nombre}>
+                          <div>
+                            <strong>{s.nombre}</strong>
+                            {s.participacion_pct !== null && (
+                              <span className="subtle"> · Peso: {fmtPct(s.participacion_pct)}</span>
                             )}
-                            <SourceFooter
-                              {...bcchSourceBase}
-                              seriesCodigos={[serie.serie_id]}
-                            />
                           </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
+                          <div className="aysen-sector-nums">
+                            <span className="is-pos">{fmtPct(s.variacion_pct, true)}</span>
+                            {s.aporte_pp !== null && <small>Aporte est.: {fmtPp(s.aporte_pp)}</small>}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </article>
 
-                {bcch.data.series_faltantes && bcch.data.series_faltantes.length > 0 && (
-                  <p className="notice">
-                    <strong>Series sin dato en el corte:</strong>{' '}
-                    {bcch.data.series_faltantes.map(s => `${s.nombre || s.serie_id}${s.motivo ? ` (${s.motivo})` : ''}`).join(' · ')}
-                  </p>
-                )}
-              </>
-            )}
-            <SourceFooter
-              {...bcchSourceBase}
-              seriesCodigos={[resumen?.serie_admin_publica || adminActivity?.serie_id || 'F035.PIB.FLU.N.CLP.2018.*.11.0.A']}
-            />
-          </article>
-
-          <KeyTerritorialCard
-            ejeLabel="Eje 2 · Estado como Motor Local"
-            title="Peso estructural de Administración Pública y concentración productiva"
-            summary={
-              <>
-                <p>
-                  En la composición oficial del PIB nominal de Aysén, <strong>Administración Pública</strong> representa{' '}
-                  <strong>{fmtPct(resumen?.administracion_publica_pct ?? adminActivity?.participacion_pct)}</strong>{' '}
-                  ({fmtMillions(resumen?.administracion_publica_millones ?? adminActivity?.valor_millones)}), mientras que{' '}
-                  <strong>Pesca y Acuicultura</strong> aporta{' '}
-                  <strong>{fmtPct(resumen?.pesca_pct ?? pescaActivity?.participacion_pct)}</strong>.
-                </p>
-                <p>
-                  El índice <strong>HHI observado ({hhiInfo.indice !== null ? num0.format(hhiInfo.indice) : 'sin dato'})</strong> resume el grado de concentración en pocas ramas productivas.
-                  Cuando el sector público y un único complejo exportador concentran una fracción elevada del producto regional, la economía territorial se vuelve altamente sensible tanto a decisiones presupuestarias centrales como a ciclos biológicos o de precios externos.
-                </p>
-              </>
-            }
-            evidenciaFavorable="La participación observada de Administración Pública en las cuentas nacionales confirma que el aparato estatal constituye uno de los pilares de mayor tamaño relativo dentro de la estructura productiva local."
-            evidenciaContraria="El valor agregado de Administración Pública en Cuentas Nacionales se valora principalmente por costos de remuneraciones y consumo de capital fijo, lo que tiende a sobrerrepresentar su peso nominal relativo cuando el sector privado transable sufre caídas de precios."
-            limiteInferencia="Una alta participación contable del sector público en el PIB regional es una relación descriptiva; no equivale a demostrar causalidad automática de dependencia ni a estimar un multiplicador fiscal sin diseño contrafactual."
-            source={{
-              ...bcchSourceBase,
-              seriesCodigos: [resumen?.serie_admin_publica || adminActivity?.serie_id || 'F035.PIB.FLU.N.CLP.2018.*.11.0.A'],
-            }}
-          />
-        </div>
-      </section>
-
-      {/* ============================================================
-          EJE 3 · RIGIDEZ OPERATIVA DE LA DESCENTRALIZACIÓN (DIPRES)
-      ============================================================ */}
-      <section id="eje-3" className="axis-section" aria-labelledby="eje-3-titulo">
-        <div className="axis-header">
-          <span className="axis-badge">Eje 3</span>
-          <div>
-            <h2 id="eje-3-titulo">Rigidez Operativa de la Descentralización</h2>
-            <p className="subtle">Ejecución presupuestaria DIPRES (datos.gob.cl CKAN) del GORE Aysén y servicios públicos en la región, separando gasto corriente, inversión y transferencias.</p>
-          </div>
-        </div>
-
-        <div className="axis-grid">
-          <article className="panel axis-main">
-            <div className="axis-main-top">
-              <div>
-                <h3>Desglose presupuestario GORE Aysén y Servicios Públicos</h3>
-                <p className="subtle">
-                  {dipres.data?.etapa_contable ? `Etapa contable: ${dipres.data.etapa_contable}` : 'Consulta en vivo desde CKAN / datos.gob.cl'}
-                  {dipres.data?.moneda ? ` · ${dipres.data.moneda}` : ''}
-                </p>
+                <article className="aysen-card aysen-sector-card is-down">
+                  <h3>Sectores que cayeron</h3>
+                  {economiaState.data.sectores_cayeron.length === 0 ? (
+                    <p className="subtle">Sin dato disponible o sin sectores en contracción informados para este período.</p>
+                  ) : (
+                    <ul className="aysen-sector-list">
+                      {economiaState.data.sectores_cayeron.map(s => (
+                        <li key={s.nombre}>
+                          <div>
+                            <strong>{s.nombre}</strong>
+                            {s.participacion_pct !== null && (
+                              <span className="subtle"> · Peso: {fmtPct(s.participacion_pct)}</span>
+                            )}
+                          </div>
+                          <div className="aysen-sector-nums">
+                            <span className="is-neg">{fmtPct(s.variacion_pct, true)}</span>
+                            {s.aporte_pp !== null && <small>Aporte est.: {fmtPp(s.aporte_pp)}</small>}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </article>
               </div>
-              <div className="dipres-controls">
-                <label className="inline-field" htmlFor={dipresYearId}>
-                  <span>Ejercicio</span>
-                  <select
-                    id={dipresYearId}
-                    value={dipresYear}
-                    onChange={event => setDipresYear(Number(event.target.value))}
-                  >
-                    <option value={2025}>2025</option>
-                    <option value={2026}>2026</option>
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  disabled={dipres.loading}
-                  onClick={() => loadDipres(dipresYear, true)}
-                >
-                  {dipres.loading ? 'Actualizando…' : 'Actualizar en vivo'}
-                </button>
-              </div>
-            </div>
 
-            {dipres.loading ? (
-              <LoadingSkeleton label={`Consultando ejecución presupuestaria DIPRES ${dipresYear} en datos.gob.cl…`} />
-            ) : dipres.error ? (
-              <ServiceErrorBox error={dipres.error} onRetry={() => loadDipres(dipresYear, true)} />
-            ) : !dipres.data ? (
-              <p className="empty">No se encontraron registros DIPRES para el ejercicio {dipresYear}.</p>
-            ) : (
-              <>
-                {dipres.data.estado_actualizacion === 'respaldo_ultimo_corte_aprobado' && (
-                  <p className="notice" role="status">
-                    <strong>Respaldo del último corte aprobado (DIPRES):</strong>{' '}
-                    {dipres.data.advertencia_respaldo ||
-                      'La consulta en vivo a datos.gob.cl no respondió; se exhibe el último corte oficial validado en caché local.'}
-                  </p>
-                )}
+              <p className="aysen-method-note">
+                <strong>Nota sobre volúmenes encadenados:</strong>{' '}
+                {economiaState.data.nota_volumenes_encadenados ||
+                  'Las series reales del Banco Central usan volúmenes encadenados (referencia 2018), por lo que la suma de actividades reales no es exactamente aditiva al PIB total. El peso porcentual sectorial se calcula siempre sobre cifras nominales (precios corrientes).'}
+              </p>
 
-                {(dipres.data.advertencia_comparabilidad_meses ||
-                  (dipres.data.mes_corte !== null && dipres.data.mes_corte !== undefined && dipres.data.mes_corte < 12)) && (
-                  <div className="brecha-box" role="note">
-                    <strong>
-                      Advertencia de comparabilidad por meses equivalentes
-                      {dipres.data.mes_corte !== null && dipres.data.mes_corte !== undefined
-                        ? ` · Corte mes ${dipres.data.mes_corte}${dipres.data.mes_corte_nombre ? ` (${dipres.data.mes_corte_nombre})` : ''}`
-                        : ''}
-                    </strong>
-                    <p>
-                      {dipres.data.advertencia_comparabilidad_meses ||
-                        `El ejercicio ${dipres.data.anio} cubre ejecución acumulada parcial (mes ${dipres.data.mes_corte}). No comparar directamente sus montos acumulados contra cierres anuales de diciembre (12 meses) sin restringir ambos ejercicios a meses equivalentes.`}
-                    </p>
-                  </div>
-                )}
-
-                <div className="pol-kpi-grid">
-                  <div className="pol-kpi-card">
-                    <span className="kpi-label">Gasto Corriente (Subt. 21–26)</span>
-                    <strong className="pol-kpi-num">{fmtMillions(dipresCorriente)}</strong>
-                    <span className="kpi-meta">Personal, bienes y servicios de operación</span>
-                  </div>
-                  <div className="pol-kpi-card">
-                    <span className="kpi-label">Inversión Real (Subt. 29–31)</span>
-                    <strong className="pol-kpi-num">{fmtMillions(dipresInversion)}</strong>
-                    <span className="kpi-meta">Activos no financieros e iniciativas de inversión</span>
-                  </div>
-                  <div className="pol-kpi-card">
-                    <span className="kpi-label">Transf. de Capital (Subt. 33)</span>
-                    <strong className="pol-kpi-num">{fmtMillions(dipresSub33)}</strong>
-                    <span className="kpi-meta">Traspasos de capital (no sumar directo con ejecutor)</span>
-                  </div>
-                  <div className="pol-kpi-card is-highlight">
-                    <span className="kpi-label">Financiamiento GORE (Partida 31)</span>
-                    <strong className="pol-kpi-num">{fmtMillions(dipresPartida31)}</strong>
-                    <span className="kpi-meta">Transferencias y marcos de financiamiento regional</span>
-                  </div>
-                </div>
-
-                {/* Ratio corriente / inversión o brecha transparente */}
-                <div className="visual-card">
-                  <h4>Relación Gasto Corriente / Inversión (Subt. 21–26 vs Subt. 29–31)</h4>
-                  {dipresRatio !== null ? (
-                    <div className="ratio-display">
-                      <div className="ratio-metric">
-                        <span className="kpi-label">Razón corriente sobre inversión</span>
-                        <strong className="pol-kpi-num">{fmtPct(dipresRatio)}</strong>
-                        <span className="kpi-meta">
-                          Por cada $100 en Subtítulos 29–31, el corte registra ${num1.format(dipresRatio)} en Subtítulos 21–26.
-                        </span>
+              {/* Bloques secundarios guardados detrás de <details> */}
+              <div className="aysen-details-stack">
+                <details className="aysen-details">
+                  <summary>Ver detalle (tablas completas de series y actividades)</summary>
+                  <div className="aysen-details-body">
+                    {economiaState.data.serie_crecimiento.length > 0 && (
+                      <div className="table-scroll" tabIndex={0} role="region" aria-label="Tabla histórica de crecimiento real del PIB">
+                        <table className="pol-table is-compact">
+                          <thead>
+                            <tr>
+                              <th scope="col">Año</th>
+                              <th scope="col" className="numeric">Aysén (% real)</th>
+                              <th scope="col" className="numeric">Chile (% real)</th>
+                              <th scope="col">Estado</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[...economiaState.data.serie_crecimiento].reverse().map(row => (
+                              <tr key={row.anio}>
+                                <td>{row.anio}</td>
+                                <td className="numeric">{fmtPct(row.aysen_pct, true)}</td>
+                                <td className="numeric">{fmtPct(row.chile_pct, true)}</td>
+                                <td>{row.estado || 'Oficial'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
-                      {dipresCorriente !== null && dipresInversion !== null && (dipresCorriente + dipresInversion) > 0 && (
-                        <div className="stacked-bar-wrap" aria-label="Proporción entre gasto corriente e inversión">
-                          <div className="stacked-bar" aria-hidden="true">
-                            <span
-                              className="stacked-seg is-current"
-                              style={{ width: `${(dipresCorriente / (dipresCorriente + dipresInversion)) * 100}%` }}
-                            />
-                            <span
-                              className="stacked-seg is-invest"
-                              style={{ width: `${(dipresInversion / (dipresCorriente + dipresInversion)) * 100}%` }}
-                            />
+                    )}
+
+                    {actividadesOrdenadas.length > 0 && (
+                      <div className="table-scroll" tabIndex={0} role="region" aria-label="Tabla de actividades productivas de Aysén">
+                        <table className="pol-table is-compact">
+                          <thead>
+                            <tr>
+                              <th scope="col">Actividad</th>
+                              <th scope="col" className="numeric">Monto nominal</th>
+                              <th scope="col" className="numeric">Peso (%)</th>
+                              <th scope="col" className="numeric">Var. real</th>
+                              <th scope="col">Serie BDE</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {actividadesOrdenadas.map(act => (
+                              <tr key={act.codigo}>
+                                <th scope="row">{act.nombre}</th>
+                                <td className="numeric">{fmtMillions(act.valor_millones)}</td>
+                                <td className="numeric">{fmtPct(act.participacion_pct)}</td>
+                                <td className="numeric">{fmtPct(act.variacion_real_pct, true)}</td>
+                                <td className="mono">{act.serie_id || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </details>
+
+                <details className="aysen-details">
+                  <summary>Ver fuente y códigos de series BDE</summary>
+                  <div className="aysen-details-body">
+                    {economiaState.data.fuentes.length > 0 ? (
+                      economiaState.data.fuentes.map((f, idx) => (
+                        <div key={`${f.nombre}-${idx}`} className="aysen-source-item">
+                          <strong>{f.nombre}</strong>
+                          <p className="subtle">
+                            {f.periodo ? `Período: ${f.periodo}` : `Corte ${anio}`}
+                            {f.unidad ? ` · ${f.unidad}` : ''}
+                            {f.cobertura ? ` · ${f.cobertura}` : ''}
+                          </p>
+                          <SourceLink fuente={f} label="Abrir cuadro oficial BCCh" />
+                        </div>
+                      ))
+                    ) : (
+                      <p className="subtle">Banco Central de Chile · Base de Datos Estadísticos (BDE).</p>
+                    )}
+                    {economiaState.data.codigos_series.length > 0 && (
+                      <div>
+                        <span className="aysen-covered-label">Códigos de series BDE consultadas:</span>
+                        <p className="mono">{economiaState.data.codigos_series.join(' · ')}</p>
+                      </div>
+                    )}
+                  </div>
+                </details>
+
+                <details className="aysen-details">
+                  <summary>Simulador hipotético (Administración Pública en el PIB)</summary>
+                  <div className="aysen-details-body">
+                    <div className="sim-disclaimer" role="note">
+                      <strong>Herramienta hipotética complementaria · No es observación oficial ni predicción causal.</strong>{' '}
+                      Simula cambios aritméticos sobre el Valor Agregado nominal de Administración Pública (Cuentas Nacionales BCCh), magnitud distinta del presupuesto DIPRES.
+                    </div>
+
+                    {!simulation || simAdminBase === null || simPibBase === null ? (
+                      <p className="subtle">
+                        Sin dato disponible de línea base nominal BCCh para ejecutar el simulador en {anio}.
+                      </p>
+                    ) : (
+                      <div className="aysen-sim-box">
+                        <div className="sim-control-block">
+                          <div className="sim-label-row">
+                            <label htmlFor={sliderId}>Variación hipotética de Administración Pública</label>
+                            <div className="sim-num-wrap">
+                              <label htmlFor={numInputId} className="sr-only">Porcentaje</label>
+                              <input
+                                id={numInputId}
+                                type="number"
+                                min={-30}
+                                max={30}
+                                step={0.5}
+                                value={deltaPct}
+                                onChange={e => handleNumericDeltaChange(e.target.value)}
+                              />
+                              <span>%</span>
+                            </div>
                           </div>
-                          <div className="stacked-legend">
-                            <span><i className="swatch is-current" /> Corriente 21–26 ({fmtPct((dipresCorriente / (dipresCorriente + dipresInversion)) * 100)})</span>
-                            <span><i className="swatch is-invest" /> Inversión 29–31 ({fmtPct((dipresInversion / (dipresCorriente + dipresInversion)) * 100)})</span>
+                          <input
+                            id={sliderId}
+                            className="sim-slider"
+                            type="range"
+                            min={-30}
+                            max={30}
+                            step={0.5}
+                            value={deltaPct}
+                            onChange={e => setDeltaPct(Number(e.target.value))}
+                          />
+                          <div className="aysen-quick-deltas" role="group" aria-label="Atajos de variación">
+                            {QUICK_DELTAS.map(val => (
+                              <button
+                                key={val}
+                                type="button"
+                                className="preset-chip"
+                                aria-pressed={deltaPct === val}
+                                onClick={() => setDeltaPct(val)}
+                              >
+                                {val > 0 ? `+${val}%` : `${val}%`}
+                              </button>
+                            ))}
                           </div>
                         </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="brecha-box" role="note">
-                      <strong>Relación no calculable en este corte (brecha documentada)</strong>
-                      <p>
-                        {dipres.data.motivo_brecha ||
-                          'El recurso central consultado en CKAN/datos.gob.cl no desglosa simultáneamente Subtítulos 21–26 e Inversión 29–31 para GORE Aysén en este corte (por ejemplo, reporta únicamente financiamiento agregado Partida 31). No se estiman ni imputan subtítulos faltantes.'}
+
+                        <div className="sim-control-block">
+                          <label htmlFor={multiplierId}>Multiplicador regional hipotético</label>
+                          <select
+                            id={multiplierId}
+                            value={multiplier}
+                            onChange={e => setMultiplier(Number(e.target.value))}
+                          >
+                            {SIM_MULTIPLIERS.map(item => (
+                              <option key={item.value} value={item.value}>{item.label}</option>
+                            ))}
+                          </select>
+                          <p className="subtle">{selectedMultiplierInfo.description}</p>
+                        </div>
+
+                        <dl className="aysen-budget-trio" aria-live="polite">
+                          <div>
+                            <dt>Base Admin. Pública</dt>
+                            <dd>{fmtMillions(simAdminBase)}</dd>
+                          </div>
+                          <div>
+                            <dt>Impacto en PIB Aysén</dt>
+                            <dd>{fmtPp(simulation.impactPibPp)}</dd>
+                          </div>
+                          <div className="is-primary">
+                            <dt>PIB nominal simulado</dt>
+                            <dd>{fmtMillions(simulation.pibSimulated)}</dd>
+                          </div>
+                        </dl>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
+      {activeTab === 'presupuestos' && (
+        <section
+          id="panel-presupuestos"
+          role="tabpanel"
+          aria-labelledby="tab-presupuestos"
+          className="aysen-panel"
+        >
+          <div className="aysen-question-head">
+            <h2>¿Cuánto dinero administra cada nivel y en qué lo gasta?</h2>
+            <p className="subtle">
+              Comparación clara por billetera institucional para {anio} · Comuna seleccionada: <strong>{getComunaNombre(comunaPresupuesto)}</strong>.
+            </p>
+          </div>
+
+          {presupuestosState.loading ? (
+            <LoadingCard label={`Consultando presupuestos de Aysén y ${getComunaNombre(comunaPresupuesto)} para ${anio}…`} />
+          ) : presupuestosState.error ? (
+            <ErrorNotice error={presupuestosState.error} onRetry={triggerRetry} />
+          ) : !presupuestosState.data ? (
+            <p className="aysen-empty">Sin dato disponible de presupuestos para {anio}.</p>
+          ) : (
+            <>
+              {presupuestosState.data.en_curso && (
+                <InProgressBanner
+                  anio={presupuestosState.data.anio}
+                  mesCorteNombre={presupuestosState.data.mes_corte_nombre}
+                  aviso={presupuestosState.data.aviso_anio_en_curso}
+                />
+              )}
+
+              {/* Resumen Consolidado sin doble contabilización */}
+              {presupuestosState.data.consolidado && (
+                <article className="aysen-card aysen-consolidated-card" aria-label="Resumen consolidado sin doble contabilización">
+                  <div className="aysen-card-top">
+                    <span className="aysen-card-kicker">Consolidado sin doble contabilización</span>
+                    <span className="aysen-territory-tag is-regional">Región de Aysén</span>
+                  </div>
+
+                  <div className="aysen-consolidated-main">
+                    <div>
+                      <span className="aysen-split-label">Gasto ejecutado consolidado</span>
+                      <p className={`aysen-big-figure${!presupuestosState.data.consolidado.disponible ? ' is-missing' : ''}`}>
+                        {fmtMillions(presupuestosState.data.consolidado.ejecutado_total_millones)}
                       </p>
                     </div>
-                  )}
-
-                  {dipres.data.gore_aysen?.subtitulos && dipres.data.gore_aysen.subtitulos.length > 0 && (
-                    <div className="table-scroll pol-table-gap" tabIndex={0} role="region" aria-label="Detalle por subtítulo GORE Aysén">
-                      <table className="pol-table">
-                        <caption className="sr-only">Detalle presupuestario por subtítulo de GORE Aysén en {dipres.data.anio}</caption>
-                        <thead>
-                          <tr>
-                            <th scope="col">Subtítulo</th>
-                            <th scope="col">Denominación</th>
-                            <th scope="col" className="numeric">Monto (MM$ CLP)</th>
-                            <th scope="col" className="numeric">Avance</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {dipres.data.gore_aysen.subtitulos.map((sub, idx) => (
-                            <tr key={`${sub.subtitulo}-${idx}`}>
-                              <td className="mono">{sub.subtitulo}</td>
-                              <th scope="row">{sub.nombre}</th>
-                              <td className="numeric">
-                                {sub.monto_millones !== undefined && sub.monto_millones !== null
-                                  ? fmtMillions(sub.monto_millones)
-                                  : sub.vigente_millones !== undefined && sub.vigente_millones !== null
-                                    ? fmtMillions(sub.vigente_millones)
-                                    : 'Sin dato'}
-                              </td>
-                              <td className="numeric">{sub.avance_pct !== undefined && sub.avance_pct !== null ? fmtPct(sub.avance_pct) : '—'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-
-                  {dipres.data.servicios_publicos_aysen && dipres.data.servicios_publicos_aysen.length > 0 && (
-                    <div className="table-scroll pol-table-gap" tabIndex={0} role="region" aria-label="Servicios públicos con registro en Aysén">
-                      <table className="pol-table">
-                        <caption className="sr-only">Servicios públicos identificados en Aysén según recurso DIPRES {dipres.data.anio}</caption>
-                        <thead>
-                          <tr>
-                            <th scope="col">Servicio / Programa</th>
-                            <th scope="col" className="numeric">Corriente</th>
-                            <th scope="col" className="numeric">Inversión</th>
-                            <th scope="col" className="numeric">Total (MM$ CLP)</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {dipres.data.servicios_publicos_aysen.map((srv, idx) => (
-                            <tr key={`${srv.nombre}-${idx}`}>
-                              <th scope="row">{srv.nombre}</th>
-                              <td className="numeric">{fmtMillions(srv.gasto_corriente_millones)}</td>
-                              <td className="numeric">{fmtMillions(srv.inversion_millones)}</td>
-                              <td className="numeric">{fmtMillions(srv.total_millones)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-
-                  <SourceFooter {...dipresSourceBase} />
-                </div>
-
-                {/* Estado en vivo de Presupuesto Abierto */}
-                <div className="visual-card open-budget-card">
-                  <div className="open-budget-head">
-                    <h4>Estado en vivo · Presupuesto Abierto</h4>
-                    <span className={`status-badge ${dipres.data.presupuesto_abierto?.disponible ? 'is-official' : 'is-warn'}`}>
-                      {dipres.data.presupuesto_abierto?.disponible
-                        ? (dipres.data.presupuesto_abierto.estado || 'Disponible')
-                        : (dipres.data.presupuesto_abierto?.estado || 'No disponible / Restringido')}
-                    </span>
-                  </div>
-                  <p className="subtle">
-                    {dipres.data.presupuesto_abierto?.mensaje ||
-                      'Verificación automática del portal Presupuesto Abierto para contraste mensualizado por servicio y subtítulo.'}
-                  </p>
-                  <div className="open-budget-meta">
-                    {dipres.data.presupuesto_abierto?.ultimo_corte && (
-                      <span><strong>Último corte:</strong> {dipres.data.presupuesto_abierto.ultimo_corte}</span>
-                    )}
-                    {dipres.data.presupuesto_abierto?.url && (
-                      <a href={dipres.data.presupuesto_abierto.url} target="_blank" rel="noreferrer">
-                        Abrir fuente oficial ↗
-                      </a>
-                    )}
-                  </div>
-                  <SourceFooter
-                    institucionFallback="DIPRES · Presupuesto Abierto"
-                    endpointFallback={`/api/v1/fiscal/dipres?anio=${dipresYear}`}
-                    actualizadoEn={dipres.data.presupuesto_abierto?.ultimo_corte}
-                    extraidoEn={dipres.data.presupuesto_abierto?.verificado_en ?? dipres.data.extraido_en}
-                  />
-                </div>
-              </>
-            )}
-            <SourceFooter {...dipresSourceBase} />
-          </article>
-
-          <KeyTerritorialCard
-            ejeLabel="Eje 3 · Rigidez Operativa"
-            title="Estructura administrativa y sobrecosto por aislamiento geográfico"
-            summary={
-              <>
-                <p>
-                  Evaluar la descentralización en Aysén exige distinguir entre el presupuesto disponible para inversión real (Subtítulos 29–31), las transferencias de capital a terceros ejecutores (Subtítulo 33) y el costo fijo de sostener la operación institucional (Subtítulos 21–26).
-                </p>
-                <p>
-                  {dipresRatio !== null ? (
-                    <>
-                      En el corte {dipres.data?.anio ?? dipresYear}, la razón gasto corriente sobre inversión alcanza{' '}
-                      <strong>{fmtPct(dipresRatio)}</strong>.
-                    </>
-                  ) : (
-                    <>
-                      En el corte {dipres.data?.anio ?? dipresYear} persiste una <strong>brecha de desagregación abierta</strong> en los recursos centrales de CKAN, donde la información del GORE aparece consolidada a nivel de financiamiento Partida 31 sin separar todos los subtítulos operativos e inversión.
-                    </>
-                  )}{' '}
-                  La dispersión territorial, las distancias terrestres/marítimas y la baja escala demográfica imponen sobrecostos estructurales de operación y logística en zonas extremas.
-                </p>
-              </>
-            }
-            evidenciaFavorable="Separar explícitamente Subtítulos 21–26, 29–31 y 33 permite auditar cuánta holgura presupuestaria real se destina a formación de capital versus funcionamiento rígido."
-            evidenciaContraria="Un mayor gasto corriente relativo en zonas extremas puede reflejar asignaciones de zona, logística de conectividad y cobertura de servicios mínimos indispensables, más que burocracia prescindible."
-            limiteInferencia="El cociente gasto corriente / inversión es un indicador descriptivo de composición presupuestaria; no permite diagnosticar ineficiencia administrativa sin controlar por escala, aislamiento geográfico, plazos y calidad de servicio."
-            source={dipresSourceBase}
-          />
-        </div>
-      </section>
-
-      {/* ============================================================
-          EJE 4 · FRAGMENTACIÓN FISCAL (3 BILLETERAS) + IMPORTADOR SINIM
-      ============================================================ */}
-      <section id="eje-4" className="axis-section" aria-labelledby="eje-4-titulo">
-        <div className="axis-header">
-          <span className="axis-badge">Eje 4</span>
-          <div>
-            <h2 id="eje-4-titulo">Fragmentación Fiscal: 3 Billeteras Territoriales y Cobertura SINIM</h2>
-            <p className="subtle">Vistas brutas estrictamente separadas de Gobierno Central, GORE Aysén y las 10 Municipalidades, junto al importador oficial SINIM.</p>
-          </div>
-        </div>
-
-        <div className="axis-grid">
-          <article className="panel axis-main">
-            <h3>Matriz de las 3 billeteras territoriales en Aysén</h3>
-            <p className="notice anti-double-notice">
-              <strong>Regla anti doble contabilización:</strong> las tres billeteras se presentan en <strong>vistas brutas separadas</strong> y <strong>no se suman entre sí</strong>.
-              Consolidar gasto territorial exige conciliar documentalmente transferencias internas (Partida 31, Subtítulos 24 y 33, y Fondo Común Municipal) bajo la misma etapa contable de devengo.
-            </p>
-
-            <div className="wallets-grid">
-              {/* Billetera 1: Gobierno Central */}
-              <div className="wallet-card">
-                <div className="wallet-head">
-                  <span className="wallet-num">Billetera 1</span>
-                  <span className="status-badge is-official">Sectorial</span>
-                </div>
-                <h4>Gobierno Central en Aysén</h4>
-                <p className="wallet-metric">
-                  {dipres.loading
-                    ? 'Cargando…'
-                    : dipres.data?.servicios_total_millones !== undefined && dipres.data?.servicios_total_millones !== null
-                      ? fmtMillions(dipres.data.servicios_total_millones)
-                      : dipres.data?.servicios_publicos_aysen && dipres.data.servicios_publicos_aysen.length > 0
-                        ? `${dipres.data.servicios_publicos_aysen.length} servicios identificados`
-                        : 'Cobertura parcial en CKAN'}
-                </p>
-                <p className="subtle">
-                  Ejecución de ministerios y servicios públicos con asiento o ejecución en la región. Etapa:{' '}
-                  <strong>{dipres.data?.etapa_contable || 'Según corte DIPRES'}</strong>.
-                </p>
-                <SourceFooter {...dipresSourceBase} notaExtra="Vista bruta sectorial; excluye partidas nacionales sin asignación territorial." />
-              </div>
-
-              {/* Billetera 2: GORE Aysén */}
-              <div className="wallet-card">
-                <div className="wallet-head">
-                  <span className="wallet-num">Billetera 2</span>
-                  <span className="status-badge is-official">Regional</span>
-                </div>
-                <h4>Gobierno Regional (GORE Aysén)</h4>
-                <p className="wallet-metric">
-                  {dipres.loading
-                    ? 'Cargando…'
-                    : fmtMillions(
-                      dipres.data?.gore_aysen?.total_bruto_millones ??
-                      dipresPartida31 ??
-                      dipresInversion ??
-                      dipresCorriente,
-                    )}
-                </p>
-                <p className="subtle">
-                  {dipresPartida31 !== null
-                    ? `Financiamiento Partida 31: ${fmtMillions(dipresPartida31)}.`
-                    : 'Programa de funcionamiento y cartera FNDR/inversión regional.'}{' '}
-                  Contiene traspasos (Subt. 33) hacia municipios y servicios.
-                </p>
-                <SourceFooter {...dipresSourceBase} notaExtra="Vista bruta GORE; no sumar con transferencias recibidas por municipios." />
-              </div>
-
-              {/* Billetera 3: 10 Municipios (SINIM) */}
-              <div className="wallet-card">
-                <div className="wallet-head">
-                  <span className="wallet-num">Billetera 3</span>
-                  <span className={`status-badge ${sinimLoaded === sinimExpected && sinimLoaded > 0 ? 'is-official' : 'is-warn'}`}>
-                    {sinimLoaded}/{sinimExpected} comunas
-                  </span>
-                </div>
-                <h4>10 Municipalidades de Aysén</h4>
-                <p className="wallet-metric">
-                  {sinim.loading
-                    ? 'Cargando…'
-                    : sinimGastoTotalBrutoMillones !== null
-                      ? fmtMillions(sinimGastoTotalBrutoMillones)
-                      : 'Sin balances cargados'}
-                </p>
-                <p className="subtle">
-                  {sinimLoaded > 0
-                    ? `Suma bruta de las ${sinimLoaded} comunas con balance BEP importado desde SINIM.`
-                    : 'Importa los Balances de Ejecución Presupuestaria (BEP) comunales en el módulo inferior.'}
-                </p>
-                <SourceFooter {...sinimSourceBase} notaExtra="Vista bruta municipal; incluye ingresos vía Fondo Común Municipal (FCM)." />
-              </div>
-            </div>
-
-            {/* Módulo Importador SINIM Interactivo */}
-            <div className="visual-card sinim-module">
-              <div className="sinim-head">
-                <div>
-                  <h4>Módulo Importador SINIM · 10 Comunas de Aysén</h4>
-                  <p className="subtle">
-                    Carga archivos oficiales exportados de SINIM (<code className="mono">.csv</code> o <code className="mono">.json</code>) con validación fila por fila y cobertura comunal automática.
-                  </p>
-                </div>
-                <a className="secondary-btn link-btn" href={sinimTemplateUrl} download>
-                  ↓ Descargar plantilla oficial CSV
-                </a>
-              </div>
-
-              {sinim.loading ? (
-                <LoadingSkeleton label="Consultando cobertura comunal SINIM de Aysén…" />
-              ) : sinim.error ? (
-                <ServiceErrorBox error={sinim.error} onRetry={() => loadSinim()} />
-              ) : (
-                <>
-                  {/* Barra de cobertura comunal */}
-                  <div className="sinim-coverage">
-                    <div className="sinim-coverage-top">
-                      <strong>Cobertura comunal: {sinimLoaded} / {sinimExpected} comunas de Aysén</strong>
-                      <span className="mono">{num1.format(sinimCoveragePct)}%</span>
-                    </div>
-                    <div
-                      className="coverage-meter is-large"
-                      role="progressbar"
-                      aria-valuenow={sinimLoaded}
-                      aria-valuemin={0}
-                      aria-valuemax={sinimExpected}
-                      aria-label={`Cobertura SINIM: ${sinimLoaded} de ${sinimExpected} comunas de Aysén`}
-                    >
-                      <span style={{ width: `${Math.min(100, Math.max(0, sinimCoveragePct))}%` }} />
-                    </div>
-                    {sinim.data?.comunas_faltantes && sinim.data.comunas_faltantes.length > 0 && (
-                      <div className="missing-comunas">
-                        <span className="subtle"><strong>Comunas faltantes ({sinim.data.comunas_faltantes.length}):</strong></span>
-                        <ul className="chip-list" aria-label="Comunas de Aysén pendientes de carga SINIM">
-                          {sinim.data.comunas_faltantes.map((item, idx) => {
-                            const label = typeof item === 'string' ? item : `${item.comuna} (${item.cut})`
-                            return <li key={`${label}-${idx}`} className="missing-chip">{label}</li>
-                          })}
-                        </ul>
+                    {presupuestosState.data.consolidado.transferencias_eliminadas_millones !== null && (
+                      <div className="aysen-eliminated-box">
+                        <span>Transferencias internas descontadas: </span>
+                        <strong>{fmtMillions(presupuestosState.data.consolidado.transferencias_eliminadas_millones)}</strong>
                       </div>
                     )}
                   </div>
 
-                  {/* Formulario de carga de archivo SINIM */}
+                  {presupuestosState.data.consolidado.instituciones_cubiertas.length > 0 && (
+                    <div className="aysen-covered-block">
+                      <span className="aysen-covered-label">Instituciones cubiertas en este consolidado:</span>
+                      <ul className="aysen-chip-list">
+                        {presupuestosState.data.consolidado.instituciones_cubiertas.map(inst => (
+                          <li key={inst}>{inst}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {presupuestosState.data.consolidado.frase_radial && (
+                    <blockquote className="aysen-radio-quote">
+                      «{presupuestosState.data.consolidado.frase_radial}»
+                    </blockquote>
+                  )}
+
+                  {presupuestosState.data.consolidado.nota_sin_doble_contabilizacion && (
+                    <p className="subtle">{presupuestosState.data.consolidado.nota_sin_doble_contabilizacion}</p>
+                  )}
+                </article>
+              )}
+
+              {/* Selector de las 3 billeteras + Gobierno Central Nacional */}
+              <div className="aysen-view-pills" role="group" aria-label="Filtrar por nivel de presupuesto">
+                <button
+                  type="button"
+                  aria-pressed={billeteraFiltro === 'todas'}
+                  onClick={() => setBilleteraFiltro('todas')}
+                >
+                  Todas ({presupuestosState.data.instituciones.length})
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={billeteraFiltro === 'regional'}
+                  onClick={() => setBilleteraFiltro('regional')}
+                >
+                  Gobierno Regional
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={billeteraFiltro === 'municipal'}
+                  onClick={() => setBilleteraFiltro('municipal')}
+                >
+                  Municipalidad
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={billeteraFiltro === 'nacional_en_region'}
+                  onClick={() => setBilleteraFiltro('nacional_en_region')}
+                >
+                  Vialidad MOP / Servicios
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={billeteraFiltro === 'nacional'}
+                  onClick={() => setBilleteraFiltro('nacional')}
+                >
+                  Gobierno Central Nacional
+                </button>
+              </div>
+
+              {institucionesFiltradas.length === 0 ? (
+                <p className="aysen-empty">
+                  Sin dato disponible para el nivel institucional seleccionado en {anio}.
+                </p>
+              ) : (
+                <div className="aysen-inst-grid">
+                  {institucionesFiltradas.map(inst => (
+                    <InstitucionPresupuestoCard key={inst.id} inst={inst} />
+                  ))}
+                </div>
+              )}
+
+              {/* Importador SINIM discreto en <details> */}
+              <details className="aysen-details aysen-sinim-details">
+                <summary>Cargar otro archivo SINIM (CSV o JSON oficial)</summary>
+                <div className="aysen-details-body">
+                  <p className="subtle">
+                    Si deseas actualizar los balances municipales BEP locales, sube un archivo oficial CSV o JSON de SINIM con formato validado.
+                  </p>
+                  <div className="aysen-sinim-actions">
+                    <a className="secondary-btn link-btn" href={sinimTemplateUrl} download>
+                      ↓ Descargar plantilla CSV
+                    </a>
+                  </div>
                   <form className="sinim-upload-form" onSubmit={handleSinimImport}>
                     <div className="sinim-file-picker">
                       <label htmlFor={sinimInputId} className="field-inline-label">
@@ -1675,15 +1990,11 @@ export function PoliticalView() {
                         id={sinimInputId}
                         type="file"
                         accept=".csv,.json,text/csv,application/json"
-                        onChange={handleFileSelected}
+                        onChange={handleSinimFileChange}
                       />
                     </div>
-                    <button
-                      type="submit"
-                      className="primary"
-                      disabled={sinimUpload.submitting}
-                    >
-                      {sinimUpload.submitting ? 'Validando e importando…' : 'Validar e importar SINIM'}
+                    <button type="submit" className="primary" disabled={sinimUpload.submitting}>
+                      {sinimUpload.submitting ? 'Importando…' : 'Validar e importar'}
                     </button>
                   </form>
 
@@ -1692,486 +2003,257 @@ export function PoliticalView() {
                       {sinimUpload.successMessage}
                     </p>
                   )}
-
                   {sinimUpload.errorMessage && (
-                    <div className="service-error-box" role="alert">
+                    <div className="aysen-error-box" role="alert">
                       <p className="error">{sinimUpload.errorMessage}</p>
                     </div>
                   )}
-
                   {sinimUpload.rowErrors.length > 0 && (
                     <div className="validation-errors" role="alert">
-                      <strong>Errores de validación detectados ({sinimUpload.rowErrors.length}):</strong>
+                      <strong>Errores de validación ({sinimUpload.rowErrors.length}):</strong>
                       <ul>
                         {sinimUpload.rowErrors.map((err, idx) => (
                           <li key={idx}>
                             {err.fila !== null && err.fila !== undefined ? `Fila ${err.fila} · ` : ''}
-                            {err.columna ? `Columna «${err.columna}» · ` : ''}
-                            {err.valor ? `(valor: «${err.valor}») ` : ''}{err.motivo}
+                            {err.columna ? `${err.columna}: ` : ''}
+                            {err.motivo}
                           </li>
                         ))}
                       </ul>
                     </div>
                   )}
+                </div>
+              </details>
+            </>
+          )}
+        </section>
+      )}
 
-                  {/* Tabla de municipios cargados */}
-                  {sinim.data && sinim.data.comunas.length > 0 ? (
-                    <div className="table-scroll pol-table-gap" tabIndex={0} role="region" aria-label="Municipios de Aysén cargados desde SINIM">
-                      <table className="pol-table">
-                        <caption className="sr-only">Registros municipales SINIM cargados para la Región de Aysén (normalizados a millones CLP)</caption>
-                        <thead>
-                          <tr>
-                            <th scope="col">CUT</th>
-                            <th scope="col">Comuna</th>
-                            <th scope="col">Año</th>
-                            <th scope="col">Etapa</th>
-                            <th scope="col" className="numeric">Ingresos (MM$)</th>
-                            <th scope="col" className="numeric">Gasto devengado (MM$)</th>
-                            <th scope="col" className="numeric">Corriente (MM$)</th>
-                            <th scope="col" className="numeric">Inversión (MM$)</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sinim.data.comunas.map(row => (
-                            <tr key={`${row.cut}-${row.anio ?? 'na'}`}>
-                              <td className="mono">{row.cut}</td>
-                              <th scope="row">{row.comuna}</th>
-                              <td>{row.anio ?? '—'}</td>
-                              <td>{row.etapa ?? '—'}</td>
-                              <td className="numeric">{fmtMillions(row.ingresos_totales_millones)}</td>
-                              <td className="numeric">{fmtMillions(row.gasto_total_devengado_millones)}</td>
-                              <td className="numeric">{fmtMillions(row.gasto_corriente_millones)}</td>
-                              <td className="numeric">{fmtMillions(row.gasto_inversion_millones)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <p className="subtle sinim-empty-note">
-                      {sinim.data?.motivo_brecha || 'Aún no hay comunas de Aysén importadas en el almacenamiento local. Descarga la plantilla CSV vacía y carga los balances BEP de SINIM.'}
-                    </p>
-                  )}
-                </>
-              )}
-
-              <SourceFooter
-                {...sinimSourceBase}
-                endpointFallback="/api/v1/fiscal/sinim · POST /api/v1/fiscal/sinim/importar"
-                notaExtra={sinim.data?.ultimo_archivo ? `Último archivo validado: ${sinim.data.ultimo_archivo}` : undefined}
-              />
-            </div>
-          </article>
-
-          <KeyTerritorialCard
-            ejeLabel="Eje 4 · Fragmentación Multinivel"
-            title="Tres billeteras descoordinadas y autonomía municipal acotada"
-            summary={
-              <>
-                <p>
-                  El gasto público que opera en Aysén fluye por tres carriles institucionales distintos: ministerios sectoriales del <strong>Gobierno Central</strong>, el <strong>Gobierno Regional (GORE)</strong> y las <strong>10 municipalidades</strong> de la región (cobertura SINIM actual: <strong>{sinimLoaded}/{sinimExpected}</strong>).
-                </p>
-                <p>
-                  Cada billetera utiliza calendarios, clasificaciones y sistemas contables distintos (SIGFE/DIPRES, reportes FNDR y balances BEP municipales bajo NICSP), lo que dificulta a la ciudadanía y a las autoridades territoriales observar un presupuesto integrado sin incurrir en doble contabilización de transferencias.
-                </p>
-              </>
-            }
-            evidenciaFavorable="Mantener las tres billeteras visibles pero separadas revela dónde se concentra la decisión financiera y evita inflar artificialmente el gasto territorial al sumar transferencias internas como el Subtítulo 33 o el FCM."
-            evidenciaContraria="La existencia de tres niveles de gasto también responde a competencias legales diferenciadas (obras estructurales nacionales, inversión regional y servicios locales de proximidad), no únicamente a fragmentación evitable."
-            limiteInferencia="Mientras no existan llaves documentales completas que concilien cada transferencia inter-billetera en etapa de devengo y cobertura 10/10 en SINIM, no corresponde publicar un total consolidado neto único para Aysén."
-            source={sinimSourceBase}
-          />
-        </div>
-      </section>
-
-      {/* ============================================================
-          SIMULADOR INTERACTIVO DE IMPACTO EN EL PIB DE AYSÉN
-      ============================================================ */}
-      <section id="simulador-aysen" className="axis-section" aria-labelledby="simulador-titulo">
-        <div className="axis-header">
-          <span className="axis-badge is-sim">Simulador hipotético</span>
-          <div>
-            <h2 id="simulador-titulo">Simulador Hipotético del Valor Agregado de Administración Pública en el PIB de Aysén</h2>
+      {activeTab === 'proyectos' && (
+        <section
+          id="panel-proyectos"
+          role="tabpanel"
+          aria-labelledby="tab-proyectos"
+          className="aysen-panel"
+        >
+          <div className="aysen-question-head">
+            <h2>¿Qué se hizo, cuándo se decidió y cuánto se pagó?</h2>
             <p className="subtle">
-              Sensibilidad aritmética sobre el <strong>Valor Agregado de la actividad Administración Pública (Cuentas Nacionales BCCh)</strong> — magnitud contable distinta del gasto presupuestario DIPRES y del empleo público.
+              Contratos, pagos anuales y compromisos de arrastre con trazabilidad por hito oficial.
             </p>
           </div>
-        </div>
 
-        <article className="panel simulator-panel">
-          <div className="sim-disclaimer" role="note">
-            <strong>Escenario simulado con multiplicadores explícitamente hipotéticos · No equivale a observación oficial ni estimación causal.</strong>{' '}
-            La variación opera exclusivamente sobre el <strong>Valor Agregado nominal de Administración Pública (BCCh)</strong>, que mide remuneraciones y consumo de capital fijo en Cuentas Nacionales y <strong>no debe confundirse con el gasto presupuestario ejecutado DIPRES</strong> (Subtítulos 21–33) ni con dotaciones de empleo público.
-          </div>
-
-          {bcch.loading ? (
-            <LoadingSkeleton label="Esperando línea base oficial del Banco Central (Administración Pública y PIB nominal de Aysén)…" />
-          ) : bcch.error ? (
-            <ServiceErrorBox error={bcch.error} onRetry={() => loadBcch(true)} />
-          ) : !simReady || !simulation || simAdminBase === null || simPibBase === null ? (
-            <div className="brecha-box" role="note">
-              <strong>Simulador en espera de observaciones oficiales BCCh</strong>
-              <p>
-                Para ejecutar la simulación se requieren los valores nominales oficiales vigentes de Administración Pública y PIB total de Aysén.
-                Este módulo nunca utiliza cifras fijas ni inventadas como línea base.
-              </p>
-            </div>
-          ) : (
-            <div className="sim-grid">
-              {/* Controles del simulador */}
-              <div className="sim-controls">
-                <div className="sim-control-block">
-                  <div className="sim-label-row">
-                    <label htmlFor={sliderId}>Variación hipotética del Valor Agregado de Administración Pública (BCCh)</label>
-                    <div className="sim-num-wrap">
-                      <label htmlFor={numInputId} className="sr-only">Porcentaje de variación</label>
-                      <input
-                        id={numInputId}
-                        type="number"
-                        min={-30}
-                        max={30}
-                        step={0.5}
-                        value={deltaPct}
-                        onChange={event => handleNumericDeltaChange(event.target.value)}
-                      />
-                      <span>%</span>
-                    </div>
-                  </div>
-                  <input
-                    id={sliderId}
-                    className="sim-slider"
-                    type="range"
-                    min={-30}
-                    max={30}
-                    step={0.5}
-                    value={deltaPct}
-                    onChange={event => setDeltaPct(Number(event.target.value))}
-                  />
-                  <div className="sim-scale-marks" aria-hidden="true">
-                    <span>-30%</span>
-                    <span>-15%</span>
-                    <span>0%</span>
-                    <span>+15%</span>
-                    <span>+30%</span>
-                  </div>
-                </div>
-
-                <div className="sim-quick-group" role="group" aria-label="Atajos de variación porcentual">
-                  {QUICK_DELTAS.map(val => (
-                    <button
-                      key={val}
-                      type="button"
-                      className="preset-chip"
-                      aria-pressed={deltaPct === val}
-                      onClick={() => setDeltaPct(val)}
-                    >
-                      {val > 0 ? `+${val}%` : `${val}%`}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="sim-control-block">
-                  <label htmlFor={multiplierId}>Multiplicador regional explícitamente hipotético</label>
-                  <select
-                    id={multiplierId}
-                    value={multiplier}
-                    onChange={event => setMultiplier(Number(event.target.value))}
-                  >
-                    {MULTIPLIERS.map(item => (
-                      <option key={item.value} value={item.value}>{item.label}</option>
-                    ))}
-                  </select>
-                  <p className="subtle">{selectedMultiplierInfo.description}</p>
-                </div>
-
-                <dl className="sim-formula">
-                  <div>
-                    <dt>Línea base oficial BCCh ({resumen?.anio ?? 'último año'})</dt>
-                    <dd>
-                      VA Admin. Pública (BCCh): <strong>{fmtMillions(simAdminBase)}</strong> · PIB nominal Aysén: <strong>{fmtMillions(simPibBase)}</strong>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Fórmula aritmética hipotética</dt>
-                    <dd className="mono">
-                      ΔPIB = (VA Admin. Pública BCCh × {deltaPct > 0 ? `+${deltaPct}` : deltaPct}%) × {num2.format(multiplier)}x (hipotético)
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-
-              {/* Resultados del simulador */}
-              <div className="sim-results" aria-live="polite">
-                <div className="pol-kpi-grid is-three">
-                  <div className={`pol-kpi-card ${simulation.deltaPib < 0 ? 'is-negative' : simulation.deltaPib > 0 ? 'is-highlight' : ''}`}>
-                    <span className="kpi-label">Delta estimado en PIB Aysén</span>
-                    <strong className="pol-kpi-num">
-                      {simulation.deltaPib > 0 ? '+' : ''}{fmtMillions(simulation.deltaPib)}
-                    </strong>
-                    <span className="kpi-meta">Delta Admin. Pública: {simulation.deltaAdmin > 0 ? '+' : ''}{fmtMillions(simulation.deltaAdmin)}</span>
-                  </div>
-                  <div className={`pol-kpi-card ${simulation.impactPibPp < 0 ? 'is-negative' : simulation.impactPibPp > 0 ? 'is-highlight' : ''}`}>
-                    <span className="kpi-label">Impacto en PIB total de Aysén</span>
-                    <strong className="pol-kpi-num">
-                      {simulation.impactPibPp > 0 ? '+' : ''}{num2.format(simulation.impactPibPp)} pp
-                    </strong>
-                    <span className="kpi-meta">Puntos porcentuales sobre PIB nominal observado</span>
-                  </div>
-                  <div className="pol-kpi-card">
-                    <span className="kpi-label">PIB nominal simulado</span>
-                    <strong className="pol-kpi-num">{fmtMillions(simulation.pibSimulated)}</strong>
-                    <span className="kpi-meta">
-                      Peso Admin. Pública: {fmtPct(simulation.baseAdminSharePct)} → {fmtPct(simulation.simAdminSharePct)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Comparación visual Observado oficial vs Escenario simulado */}
-                <div className="visual-card">
-                  <h4>Observado oficial ({resumen?.anio ?? '—'}) vs Escenario simulado</h4>
-                  {(() => {
-                    const maxPib = Math.max(simPibBase, simulation.pibSimulated, 1)
-                    const maxAdmin = Math.max(simAdminBase, simulation.adminSimulated, 1)
-                    return (
-                      <div className="compare-bars">
-                        <div className="compare-bar-row">
-                          <span className="compare-bar-label">PIB Aysén · Observado oficial</span>
-                          <div className="compare-track" aria-hidden="true">
-                            <div className="compare-fill is-reference" style={{ width: `${(simPibBase / maxPib) * 100}%` }} />
-                          </div>
-                          <span className="compare-bar-val">{fmtMillions(simPibBase)}</span>
-                        </div>
-                        <div className="compare-bar-row">
-                          <span className="compare-bar-label">PIB Aysén · Escenario simulado</span>
-                          <div className="compare-track" aria-hidden="true">
-                            <div
-                              className={`compare-fill ${simulation.deltaPib < 0 ? 'is-negative' : 'is-primary'}`}
-                              style={{ width: `${Math.max(0, (simulation.pibSimulated / maxPib) * 100)}%` }}
-                            />
-                          </div>
-                          <span className="compare-bar-val">{fmtMillions(simulation.pibSimulated)}</span>
-                        </div>
-                        <div className="compare-bar-row">
-                          <span className="compare-bar-label">Admin. Pública · Observado oficial</span>
-                          <div className="compare-track" aria-hidden="true">
-                            <div className="compare-fill is-reference" style={{ width: `${(simAdminBase / maxAdmin) * 100}%` }} />
-                          </div>
-                          <span className="compare-bar-val">{fmtMillions(simAdminBase)}</span>
-                        </div>
-                        <div className="compare-bar-row">
-                          <span className="compare-bar-label">Admin. Pública · Escenario simulado</span>
-                          <div className="compare-track" aria-hidden="true">
-                            <div
-                              className={`compare-fill ${simulation.deltaAdmin < 0 ? 'is-negative' : 'is-primary'}`}
-                              style={{ width: `${Math.max(0, (simulation.adminSimulated / maxAdmin) * 100)}%` }}
-                            />
-                          </div>
-                          <span className="compare-bar-val">{fmtMillions(simulation.adminSimulated)}</span>
-                        </div>
-                      </div>
-                    )
-                  })()}
-                  <SourceFooter
-                    {...bcchSourceBase}
-                    seriesCodigos={bcchSimCodes}
-                    notaExtra="Escenario simulado paramétrico a partir de observaciones oficiales del BCCh."
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          <SourceFooter
-            {...bcchSourceBase}
-            seriesCodigos={bcchSimCodes}
-            notaExtra="Línea base oficial BCCh · Simulación bajo supuestos paramétricos explícitos."
-          />
-        </article>
-      </section>
-
-      {/* ============================================================
-          EXPLORADOR VIVO DE SERIES BCCh (ACORDEÓN <details>)
-      ============================================================ */}
-      <section id="explorador-bcch" className="axis-section" aria-labelledby="explorador-titulo">
-        <details className="panel bcch-explorer">
-          <summary id="explorador-titulo">
-            <span>
-              <strong>Explorador vivo de series del Banco Central de Chile</strong>
-              <small className="subtle">Busca en tiempo real series anuales o trimestrales y consulta observaciones directamente por código BDE.</small>
-            </span>
-          </summary>
-
-          <div className="explorer-body">
-            <form className="explorer-search-form" onSubmit={handleBcchSearch}>
-              <label className="field" htmlFor={searchFreqId}>
-                Frecuencia
-                <select
-                  id={searchFreqId}
-                  value={searchFreq}
-                  onChange={event => setSearchFreq(event.target.value as 'ANNUAL' | 'QUARTERLY')}
-                >
-                  <option value="ANNUAL">Anual (ANNUAL)</option>
-                  <option value="QUARTERLY">Trimestral (QUARTERLY)</option>
-                </select>
-              </label>
-              <label className="field explorer-query-field" htmlFor={searchQueryId}>
-                Término de búsqueda en catálogo BCCh
-                <input
-                  id={searchQueryId}
-                  type="search"
-                  value={searchTerm}
-                  placeholder="Ej. Aysén, PIB, Pesca, Administración pública…"
-                  onChange={event => setSearchTerm(event.target.value)}
-                />
-              </label>
-              <button type="submit" className="primary" disabled={searchState.loading || !searchTerm.trim()}>
-                {searchState.loading ? 'Buscando…' : 'Buscar series'}
-              </button>
-            </form>
-
-            {searchState.loading && <LoadingSkeleton label="Consultando catálogo de series BCCh…" />}
-            {searchState.error && (
-              <ServiceErrorBox
-                error={searchState.error}
-                onRetry={() => {
-                  searchBcchSeries(searchFreq, searchTerm)
-                    .then(data => setSearchState({ loading: false, data, error: null }))
-                    .catch(err => setSearchState({ loading: false, data: null, error: err instanceof Error ? err : new Error('Error en búsqueda') }))
-                }}
+          {/* Buscador y filtros */}
+          <form className="aysen-search-bar" onSubmit={handleProjectSearchSubmit}>
+            <label className="aysen-search-field" htmlFor={searchInputId}>
+              <span>Buscar obra, BIP o contrato</span>
+              <input
+                id={searchInputId}
+                type="search"
+                value={searchInput}
+                placeholder="Ej. Ruta 7, puente, BIP 400…"
+                onChange={e => setSearchInput(e.target.value)}
               />
-            )}
+            </label>
 
-            {searchState.data && (
-              <div className="visual-card">
-                <h4>Resultados en catálogo BCCh ({searchState.data.total} coincidencias)</h4>
-                {searchState.data.resultados.length === 0 ? (
-                  <p className="subtle">No se encontraron series para «{searchState.data.query}» en frecuencia {searchState.data.frequency}.</p>
-                ) : (
-                  <div className="table-scroll" tabIndex={0} role="region" aria-label="Resultados de búsqueda de series BCCh">
-                    <table className="pol-table">
-                      <thead>
-                        <tr>
-                          <th scope="col">Código serie</th>
-                          <th scope="col">Descripción</th>
-                          <th scope="col">Cobertura</th>
-                          <th scope="col">Acción</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {searchState.data.resultados.slice(0, 25).map(item => (
-                          <tr key={item.seriesId}>
-                            <td className="mono">{item.seriesId}</td>
-                            <th scope="row">{item.spanishTitle}</th>
-                            <td className="mono">
-                              {item.firstObservation || '—'} → {item.lastObservation || '—'}
-                            </td>
-                            <td>
-                              <button
-                                type="button"
-                                className="text-button"
-                                onClick={() => handleInspectSeries(item.seriesId)}
-                              >
-                                Consultar serie
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                <SourceFooter
-                  fuente={searchState.data.fuente_trazabilidad}
-                  institucionFallback="Banco Central de Chile (Catálogo BDE)"
-                  endpointFallback={`/api/v1/bcch/search?frequency=${searchState.data.frequency}&q=${encodeURIComponent(searchState.data.query)}`}
-                  actualizadoEn={searchState.data.actualizado_en}
-                  extraidoEn={searchState.data.extraido_en}
-                />
-              </div>
-            )}
+            <label className="aysen-search-field" htmlFor={instSelectId}>
+              <span>Institución</span>
+              <select
+                id={instSelectId}
+                value={institucionFiltro}
+                onChange={e => {
+                  setInstitucionFiltro(e.target.value)
+                  setSelectedProjectId(null)
+                }}
+              >
+                <option value="">Todas las instituciones</option>
+                {(proyectosState.data?.instituciones_disponibles ?? ['Dirección de Vialidad']).map(inst => (
+                  <option key={inst} value={inst}>
+                    {inst}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-            {/* Consulta directa de serie puntual */}
-            <form
-              className="explorer-direct-form"
-              onSubmit={event => {
-                event.preventDefault()
-                handleInspectSeries(manualSeriesId)
-              }}
-            >
-              <label className="field explorer-query-field" htmlFor={seriesIdInput}>
-                Consultar código de serie exacto
-                <input
-                  id={seriesIdInput}
-                  type="text"
-                  value={manualSeriesId}
-                  placeholder="Ej. F035.PIB.FLU.N.CLP.2018.Z.Z.Z.11.0.A"
-                  onChange={event => setManualSeriesId(event.target.value)}
-                />
-              </label>
-              <label className="field" htmlFor={firstDateInput}>
-                Desde fecha (opcional)
-                <input
-                  id={firstDateInput}
-                  type="text"
-                  value={firstDate}
-                  placeholder="YYYY-MM-DD"
-                  onChange={event => setFirstDate(event.target.value)}
-                />
-              </label>
-              <button type="submit" className="secondary-btn" disabled={seriesState.loading || !manualSeriesId.trim()}>
-                {seriesState.loading ? 'Consultando…' : 'Consultar serie'}
+            <div className="aysen-search-actions">
+              <button type="submit" className="primary">
+                Buscar
               </button>
-            </form>
+              {(appliedSearch || institucionFiltro || comunaProyectos) && (
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() => {
+                    setSearchInput('')
+                    setAppliedSearch('')
+                    setInstitucionFiltro('')
+                    setComunaProyectos('')
+                    setSelectedProjectId(null)
+                  }}
+                >
+                  Limpiar
+                </button>
+              )}
+            </div>
+          </form>
 
-            {seriesState.loading && <LoadingSkeleton label={`Descargando observaciones de ${manualSeriesId} desde BCCh…`} />}
-            {seriesState.error && (
-              <ServiceErrorBox error={seriesState.error} onRetry={() => handleInspectSeries(manualSeriesId)} />
-            )}
-            {seriesState.data && (
-              <div className="visual-card">
-                <h4>{seriesState.data.titulo}</h4>
-                <p className="subtle">
-                  Código oficial: <code className="mono">{seriesState.data.serie_id}</code>
-                  {seriesState.data.unidad ? ` · Unidad: ${seriesState.data.unidad}` : ''}
-                  {` · ${seriesState.data.observaciones.length} observaciones`}
-                </p>
-                {seriesState.data.observaciones.length > 0 ? (
-                  <div className="table-scroll pol-table-gap" tabIndex={0} role="region" aria-label={`Observaciones de ${seriesState.data.serie_id}`}>
-                    <table className="pol-table is-compact">
-                      <thead>
-                        <tr>
-                          <th scope="col">Fecha / Período</th>
-                          <th scope="col" className="numeric">Valor</th>
-                          <th scope="col">Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[...seriesState.data.observaciones].reverse().slice(0, 24).map((obs, idx) => (
-                          <tr key={`${obs.fecha}-${idx}`}>
-                            <td className="mono">{obs.fecha}</td>
-                            <td className="numeric">{obs.valor !== null ? num2.format(obs.valor) : 'Sin dato'}</td>
-                            <td>{obs.estado || 'OK'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="subtle">La serie no devolvió observaciones para el rango solicitado.</p>
-                )}
-                <SourceFooter
-                  fuente={seriesState.data.fuente_trazabilidad}
-                  institucionFallback="Banco Central de Chile (BDE)"
-                  endpointFallback={`/api/v1/bcch/series/${encodeURIComponent(seriesState.data.serie_id)}`}
-                  seriesCodigos={[seriesState.data.serie_id]}
-                  actualizadoEn={seriesState.data.actualizado_en}
-                  extraidoEn={seriesState.data.extraido_en}
+          {proyectosState.loading ? (
+            <LoadingCard label={`Consultando proyectos y contratos de Aysén para ${anio}…`} />
+          ) : proyectosState.error ? (
+            <ErrorNotice error={proyectosState.error} onRetry={triggerRetry} />
+          ) : !proyectosState.data ? (
+            <p className="aysen-empty">Sin dato disponible de proyectos para {anio}.</p>
+          ) : (
+            <>
+              {proyectosState.data.en_curso && (
+                <InProgressBanner
+                  anio={proyectosState.data.anio}
+                  mesCorteNombre={proyectosState.data.mes_corte_nombre}
                 />
+              )}
+
+              {/* Dos tarjetas separadas respondiendo las dos preguntas distintas */}
+              <div className="aysen-arrastre-grid">
+                {[
+                  proyectosState.data.pregunta_pagado_arrastre,
+                  proyectosState.data.pregunta_presupuesto_comprometido,
+                ].map((preg, idx) => (
+                  <article key={idx} className="aysen-card aysen-question-card">
+                    <span className="aysen-card-kicker">Pregunta {idx + 1}</span>
+                    <h3>{preg.titulo}</h3>
+                    <p className={`aysen-big-figure${!preg.disponible ? ' is-missing' : ''}`}>
+                      {preg.porcentaje_pct !== null
+                        ? fmtPct(preg.porcentaje_pct)
+                        : preg.numerador_millones !== null
+                          ? fmtMillions(preg.numerador_millones)
+                          : 'Sin dato disponible'}
+                    </p>
+                    {(preg.numerador_millones !== null || preg.denominador_millones !== null) && (
+                      <p className="aysen-figure-caption">
+                        {fmtMillions(preg.numerador_millones)} sobre {fmtMillions(preg.denominador_millones)}
+                      </p>
+                    )}
+                    {preg.base_calculo && (
+                      <p className="aysen-base-note">
+                        <strong>Base:</strong> {preg.base_calculo}
+                      </p>
+                    )}
+                    {preg.frase_radial ? (
+                      <blockquote className="aysen-radio-quote">
+                        «{preg.frase_radial}»
+                      </blockquote>
+                    ) : preg.sin_dato_motivo ? (
+                      <p className="subtle">{preg.sin_dato_motivo}</p>
+                    ) : null}
+                    <div className="aysen-question-card-foot">
+                      {preg.proyectos_incluidos !== null && (
+                        <span className="subtle">
+                          {preg.proyectos_incluidos} obras incluidas
+                          {preg.proyectos_excluidos ? ` · ${preg.proyectos_excluidos} excluidas por falta de fecha` : ''}
+                        </span>
+                      )}
+                      <SourceLink fuente={preg.fuente} />
+                    </div>
+                  </article>
+                ))}
               </div>
-            )}
-          </div>
-        </details>
-      </section>
+
+              {/* Vista de Ficha de Proyecto o Lista de Obras */}
+              {selectedProject ? (
+                <ProyectoFicha
+                  proyecto={selectedProject}
+                  anio={anio}
+                  onBack={() => setSelectedProjectId(null)}
+                />
+              ) : (
+                <section className="aysen-projects-list-wrap" aria-label="Listado de obras y contratos">
+                  <div className="aysen-list-head">
+                    <h3>Obras registradas ({proyectosState.data.proyectos.length})</h3>
+                    <span className="subtle">Toca cualquier obra para abrir su ficha e hitos oficiales.</span>
+                  </div>
+
+                  {proyectosState.data.proyectos.length === 0 ? (
+                    <p className="aysen-empty">
+                      No se encontraron obras con los filtros aplicados para {anio}.
+                    </p>
+                  ) : (
+                    <ul className="aysen-project-list">
+                      {proyectosState.data.proyectos.map(proy => (
+                        <li key={proy.id}>
+                          <button
+                            type="button"
+                            className="aysen-project-row"
+                            onClick={() => setSelectedProjectId(proy.id)}
+                          >
+                            <div className="aysen-project-row-top">
+                              <span className={`aysen-arrastre-badge is-${proy.clasificacion_arrastre}`}>
+                                {proy.etiqueta_arrastre}
+                              </span>
+                              <span className="aysen-project-meta">
+                                {proy.comuna ? `${proy.comuna} · ` : ''}{proy.institucion}
+                              </span>
+                            </div>
+                            <strong className="aysen-project-name">{proy.nombre}</strong>
+                            <div className="aysen-project-row-nums">
+                              <span>
+                                <small>Contratado</small>
+                                <strong>{fmtMillions(proy.costo_total_millones)}</strong>
+                              </span>
+                              <span>
+                                <small>Pagado {anio}</small>
+                                <strong>{fmtMillions(proy.pagado_anio_millones)}</strong>
+                              </span>
+                              <span className="aysen-row-arrow" aria-hidden="true">Ver ficha →</span>
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              )}
+
+              {/* Sección separada en <details>: Proyectos con información insuficiente */}
+              <details className="aysen-details">
+                <summary>
+                  Proyectos con información insuficiente ({proyectosState.data.proyectos_insuficientes.length})
+                </summary>
+                <div className="aysen-details-body">
+                  <p className="subtle">
+                    Estos proyectos se muestran aparte y quedan excluidos del cálculo porcentual de arrastre para no distorsionar los resultados cuando falta fecha de contratación o monto oficial verificable.
+                  </p>
+                  {proyectosState.data.proyectos_insuficientes.length === 0 ? (
+                    <p className="subtle">No hay proyectos excluidos por información insuficiente con los filtros actuales.</p>
+                  ) : (
+                    <ul className="aysen-insuf-list">
+                      {proyectosState.data.proyectos_insuficientes.map(proy => (
+                        <li key={proy.id}>
+                          <div className="aysen-insuf-head">
+                            <strong>{proy.nombre}</strong>
+                            <span className="aysen-project-meta">
+                              {proy.comuna ? `${proy.comuna} · ` : ''}{proy.institucion}
+                            </span>
+                          </div>
+                          <p className="subtle">
+                            {proy.motivo_insuficiente || 'Falta fecha de contratación o respaldo de pagos para clasificar arrastre.'}
+                          </p>
+                          <button
+                            type="button"
+                            className="text-button"
+                            onClick={() => setSelectedProjectId(proy.id)}
+                          >
+                            Ver ficha disponible →
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </details>
+            </>
+          )}
+        </section>
+      )}
     </div>
   )
 }

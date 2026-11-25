@@ -1713,3 +1713,838 @@ dialog::backdrop { background: #07392f99; }
   .chart-label, .chart-value { font-size: .79rem; }
   .method-definitions { padding: 1.1rem; }
 }
+
+
+/* ============================================================================
+   OBSERVATORIO DE AYSÉN · 4 PESTAÑAS MOBILE-FIRST (Resumen, Economía, Presupuestos, Proyectos)
+   Diseñado primero para celular (360px+) con expansión progresiva a escritorio
+============================================================================ */
+.aysen-page {
+  display: grid;
+  gap: 1rem;
+  padding-block: 1rem 2rem;
+  min-width: 0;
+}
+.aysen-header {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1rem;
+  display: grid;
+  gap: .85rem;
+  box-shadow: 0 2px 10px #2343320a;
+}
+.aysen-header-top { display: grid; gap: .3rem; }
+.aysen-title {
+  margin: 0;
+  font-size: clamp(1.55rem, 5vw, 2.35rem);
+  letter-spacing: -.04em;
+  line-height: 1.08;
+  color: var(--dark);
+}
+.aysen-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: .9rem;
+  line-height: 1.5;
+}
+.aysen-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .65rem;
+}
+.aysen-control-field {
+  display: grid;
+  gap: .28rem;
+  font-size: .8rem;
+  font-weight: 700;
+  color: var(--ink);
+  min-width: 0;
+}
+.aysen-control-field select,
+.aysen-search-field input,
+.aysen-search-field select {
+  width: 100%;
+  min-height: 44px;
+  padding: .45rem .65rem;
+  border: 1px solid #a9bcb1;
+  border-radius: 8px;
+  background: #f8faf8;
+  color: var(--ink);
+  font-weight: 500;
+}
+.aysen-hint-bar {
+  margin: 0;
+  padding: .5rem .75rem;
+  border-radius: 8px;
+  background: #eff5f2;
+  color: var(--muted);
+  font-size: .8rem;
+  line-height: 1.45;
+}
+.aysen-tablist {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .4rem;
+  background: #edf3ef;
+  padding: .3rem;
+  border-radius: 11px;
+}
+.aysen-tab {
+  min-height: 44px;
+  padding: .45rem .65rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: .88rem;
+  text-align: center;
+}
+.aysen-tab:hover:not([aria-selected="true"]) {
+  background: #e1ece6;
+  color: var(--ink);
+}
+.aysen-tab[aria-selected="true"] {
+  background: var(--dark);
+  color: #fff;
+  border-color: var(--dark);
+  box-shadow: 0 2px 6px #07392f33;
+}
+.aysen-panel {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.aysen-question-head {
+  display: grid;
+  gap: .3rem;
+  padding-inline: .15rem;
+}
+.aysen-question-head h2 {
+  margin: 0;
+  font-size: clamp(1.28rem, 4.2vw, 1.8rem);
+  letter-spacing: -.03em;
+  line-height: 1.18;
+  color: var(--dark);
+}
+.aysen-question-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: .88rem;
+  line-height: 1.5;
+}
+.aysen-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem .75rem;
+  padding: .75rem .9rem;
+  border-radius: 10px;
+  background: #f7efdb;
+  border: 1px solid #e2ce9b;
+  color: #4f3b11;
+  font-size: .84rem;
+  line-height: 1.45;
+}
+.aysen-banner.is-info {
+  background: #eaf4f0;
+  border-color: #b7d7ca;
+  color: #0e4236;
+}
+.aysen-banner-badge {
+  display: inline-block;
+  padding: .15rem .5rem;
+  border-radius: 999px;
+  background: var(--dark);
+  color: #fff;
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.aysen-loading,
+.aysen-empty,
+.aysen-error-box {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1.25rem 1rem;
+  font-size: .9rem;
+  color: var(--muted);
+}
+.aysen-error-box {
+  border-color: #dfb2b2;
+  background: #fdf4f4;
+  color: #7c2222;
+  display: grid;
+  gap: .65rem;
+}
+.aysen-summary-grid,
+.aysen-arrastre-grid,
+.aysen-sectors-grid,
+.aysen-inst-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: .9rem;
+}
+.aysen-card,
+.aysen-summary-card,
+.aysen-chart-card,
+.aysen-sector-card,
+.aysen-question-card,
+.aysen-consolidated-card,
+.aysen-project-dossier,
+.aysen-projects-list-wrap {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1rem;
+  display: grid;
+  gap: .75rem;
+  min-width: 0;
+  box-shadow: 0 2px 10px #23433208;
+}
+.aysen-summary-card {
+  border-top: 4px solid var(--accent);
+}
+.aysen-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: .4rem;
+}
+.aysen-card-kicker {
+  font-size: .73rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--accent);
+}
+.aysen-territory-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: .18rem .55rem;
+  border-radius: 999px;
+  font-size: .73rem;
+  font-weight: 700;
+  background: #e8f1ed;
+  color: var(--dark);
+}
+.aysen-territory-tag.is-regional {
+  background: #e1f2ec;
+  color: #064e3d;
+}
+.aysen-big-figure,
+.aysen-summary-card strong,
+.aysen-question-card strong,
+.aysen-consolidated-main strong {
+  font-size: clamp(1.75rem, 6.5vw, 2.35rem);
+  letter-spacing: -.04em;
+  line-height: 1.08;
+  color: var(--dark);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.aysen-big-figure.is-pos,
+.is-pos { color: #0b6e4f; }
+.is-up { color: #0b6e4f; font-weight: 700; }
+.is-down { color: #9c2b2b; font-weight: 700; }
+.aysen-figure-caption {
+  margin: 0;
+  font-size: .82rem;
+  color: var(--muted);
+}
+.aysen-radio-quote {
+  margin: 0;
+  padding: .7rem .85rem;
+  border-left: 3px solid var(--accent);
+  background: #f5f9f7;
+  border-radius: 0 8px 8px 0;
+  color: var(--ink);
+  font-size: .9rem;
+  line-height: 1.52;
+}
+.aysen-callout {
+  padding: .8rem .95rem;
+  border-radius: 10px;
+  background: #edf5f1;
+  border: 1px solid #c3ddd1;
+  color: var(--ink);
+  font-size: .88rem;
+  line-height: 1.5;
+}
+.aysen-meta-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem .75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: .78rem;
+  color: var(--muted);
+}
+.aysen-inline-meta {
+  font-size: .78rem;
+  color: var(--muted);
+  margin: 0;
+}
+.aysen-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding-top: .35rem;
+  border-top: 1px solid var(--line);
+}
+.aysen-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  min-height: 44px;
+  padding: .45rem .85rem;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  font-size: .84rem;
+}
+.aysen-cta-btn:hover { background: #065a46; }
+.aysen-source-btn,
+.aysen-source-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: .35rem .6rem;
+  border-radius: 8px;
+  border: 1px solid #c9d8d1;
+  background: #f7faf8;
+  color: var(--dark);
+  font-size: .8rem;
+  font-weight: 650;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.aysen-source-link:hover,
+.aysen-source-btn:hover {
+  background: #e7f2ed;
+  text-decoration: underline;
+}
+.aysen-source-item {
+  display: grid;
+  gap: .25rem;
+  padding: .5rem 0;
+  border-bottom: 1px solid var(--line);
+  font-size: .82rem;
+}
+.aysen-source-item:last-child { border-bottom: 0; }
+.aysen-source-text { color: var(--muted); font-size: .8rem; line-height: 1.45; }
+
+/* Economía: selector, gráfico SVG/barras y actividades */
+.aysen-view-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+}
+.aysen-view-pills button {
+  min-height: 44px;
+  padding: .4rem .75rem;
+  border-radius: 999px;
+  border: 1px solid #b9cdc3;
+  background: #f6faf8;
+  color: var(--ink);
+  font-size: .82rem;
+  font-weight: 650;
+}
+.aysen-view-pills button[aria-pressed="true"] {
+  background: var(--dark);
+  border-color: var(--dark);
+  color: #fff;
+}
+.aysen-chart-header {
+  display: grid;
+  gap: .45rem;
+}
+.aysen-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+  font-size: .8rem;
+  color: var(--muted);
+}
+.aysen-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  margin-right: .35rem;
+  vertical-align: middle;
+}
+.aysen-swatch.is-aysen { background: #08785e; }
+.aysen-swatch.is-chile { background: #335c9b; }
+.aysen-chart-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+.aysen-svg-chart {
+  display: block;
+  width: 100%;
+  min-width: 300px;
+  height: auto;
+}
+.aysen-svg-bar-group { cursor: pointer; }
+.aysen-chart-readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .45rem .85rem;
+  padding: .55rem .75rem;
+  border-radius: 8px;
+  background: #f3f7f5;
+  font-size: .83rem;
+}
+.aysen-readout-year { font-weight: 800; color: var(--dark); }
+.aysen-activity-list,
+.aysen-sector-list,
+.aysen-breakdown-list,
+.aysen-project-list,
+.aysen-insuf-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: .55rem;
+}
+.aysen-activity-list li {
+  display: grid;
+  gap: .25rem;
+  padding-bottom: .45rem;
+  border-bottom: 1px solid #eef2ef;
+}
+.aysen-activity-top {
+  display: flex;
+  justify-content: space-between;
+  gap: .5rem;
+  font-size: .85rem;
+}
+.aysen-activity-name { font-weight: 650; color: var(--ink); }
+.aysen-activity-val { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--dark); white-space: nowrap; }
+.aysen-activity-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #ecf2ef;
+  overflow: hidden;
+}
+.aysen-activity-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.aysen-sector-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: .6rem;
+  padding: .45rem 0;
+  border-bottom: 1px solid #eef2ef;
+  font-size: .85rem;
+}
+.aysen-sector-nums {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Presupuestos: 3 billeteras, inicial/vigente/ejecutado, desglose y administración */
+.aysen-inst-title {
+  margin: 0;
+  font-size: 1.08rem;
+  color: var(--dark);
+}
+.aysen-budget-trio {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .45rem;
+  background: #f5f8f6;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: .6rem;
+}
+.aysen-budget-trio > div {
+  display: grid;
+  gap: .15rem;
+  min-width: 0;
+}
+.aysen-budget-trio span {
+  font-size: .72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.aysen-budget-trio strong {
+  font-size: .92rem;
+  color: var(--dark);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.aysen-split-box {
+  display: grid;
+  gap: .5rem;
+}
+.aysen-split-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .5rem;
+}
+.aysen-split-grid > div {
+  padding: .55rem .65rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #fbfcfb;
+  display: grid;
+  gap: .15rem;
+}
+.aysen-split-label { font-size: .76rem; color: var(--muted); }
+.aysen-split-val { font-size: .95rem; font-weight: 750; color: var(--dark); font-variant-numeric: tabular-nums; }
+.aysen-split-pct { font-size: .82rem; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.aysen-split-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e9efec;
+}
+.aysen-base-note,
+.aysen-method-note {
+  margin: 0;
+  font-size: .78rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.aysen-admin-cost {
+  padding: .65rem .75rem;
+  border-radius: 9px;
+  background: #f8f6f0;
+  border: 1px solid #e4dcc8;
+  display: grid;
+  gap: .25rem;
+  font-size: .83rem;
+}
+.aysen-admin-cost-num {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--dark);
+  font-variant-numeric: tabular-nums;
+}
+.aysen-breakdown-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: .6rem;
+  padding: .45rem 0;
+  border-bottom: 1px solid #eef2ef;
+  font-size: .83rem;
+}
+.aysen-breakdown-nums {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.aysen-sub-breakdown {
+  margin: .35rem 0 0 .75rem;
+  padding-left: .65rem;
+  border-left: 2px solid #d2e0d9;
+  display: grid;
+  gap: .25rem;
+  font-size: .79rem;
+  color: var(--muted);
+}
+.aysen-consolidated-card {
+  border-left: 4px solid var(--dark);
+}
+.aysen-consolidated-main {
+  display: grid;
+  gap: .3rem;
+}
+.aysen-covered-block {
+  display: grid;
+  gap: .35rem;
+}
+.aysen-covered-label {
+  font-size: .76rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.aysen-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+.aysen-pill-accent,
+.aysen-pill-muted,
+.aysen-arrastre-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: .2rem .55rem;
+  border-radius: 999px;
+  font-size: .74rem;
+  font-weight: 700;
+}
+.aysen-pill-accent { background: #dff1ea; color: #064e3d; }
+.aysen-pill-muted { background: #eef1ef; color: #4a5955; }
+.aysen-arrastre-badge { background: #e8f1ed; color: var(--dark); }
+.aysen-arrastre-badge.is-arrastre { background: #f8ebd0; color: #6c4a0d; }
+.aysen-eliminated-box {
+  padding: .55rem .75rem;
+  border-radius: 8px;
+  background: #f2f7f4;
+  font-size: .82rem;
+  color: var(--ink);
+}
+.aysen-sinim-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  align-items: center;
+}
+
+/* Details / acordeones limpios */
+.aysen-details-stack { display: grid; gap: .6rem; }
+.aysen-details,
+.aysen-sinim-details {
+  background: #f9fbfa;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: .55rem .75rem;
+}
+.aysen-details summary,
+.aysen-sinim-details summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: .85rem;
+  color: var(--dark);
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+}
+.aysen-details-body {
+  padding-top: .6rem;
+  display: grid;
+  gap: .6rem;
+  font-size: .84rem;
+}
+.aysen-sim-box {
+  display: grid;
+  gap: .65rem;
+}
+.aysen-quick-deltas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+.aysen-quick-deltas button {
+  min-height: 38px;
+  padding: .25rem .6rem;
+  border-radius: 7px;
+  border: 1px solid #b9cdc3;
+  background: #fff;
+  font-size: .8rem;
+  font-weight: 700;
+}
+
+/* Proyectos: buscador, 2 preguntas, lista y ficha con línea de tiempo */
+.aysen-search-bar {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: .85rem;
+  display: grid;
+  gap: .65rem;
+}
+.aysen-search-field {
+  display: grid;
+  gap: .25rem;
+  font-size: .79rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.aysen-search-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+.aysen-question-card-foot {
+  font-size: .79rem;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  padding-top: .45rem;
+}
+.aysen-list-head,
+.aysen-insuf-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: .4rem;
+}
+.aysen-project-row {
+  width: 100%;
+  text-align: left;
+  background: #fbfcfb;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: .8rem;
+  display: grid;
+  gap: .45rem;
+  color: var(--ink);
+}
+.aysen-project-row:hover {
+  border-color: var(--accent);
+  background: #f2f8f5;
+}
+.aysen-project-row-top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: .4rem;
+}
+.aysen-project-name {
+  font-weight: 750;
+  font-size: .9rem;
+  line-height: 1.32;
+  color: var(--dark);
+}
+.aysen-project-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem .65rem;
+  font-size: .78rem;
+  color: var(--muted);
+}
+.aysen-project-row-nums {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: .4rem .8rem;
+  font-size: .82rem;
+  font-variant-numeric: tabular-nums;
+}
+.aysen-row-arrow {
+  color: var(--accent);
+  font-weight: 750;
+  font-size: .82rem;
+}
+.aysen-dossier-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.aysen-dossier-head { display: grid; gap: .4rem; }
+.aysen-dossier-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem .8rem;
+  font-size: .8rem;
+  color: var(--muted);
+}
+.aysen-project-money {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: .55rem;
+}
+.aysen-project-money > div {
+  padding: .65rem .75rem;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: #f8faf9;
+  display: grid;
+  gap: .15rem;
+}
+.aysen-project-money > div.is-total { border-left: 3px solid #335c9b; }
+.aysen-project-money > div.is-paid { border-left: 3px solid #08785e; background: #eff7f4; }
+.aysen-project-money span { font-size: .75rem; color: var(--muted); }
+.aysen-project-money strong { font-size: 1.15rem; color: var(--dark); font-variant-numeric: tabular-nums; }
+.aysen-project-money-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem 1rem;
+  font-size: .8rem;
+  color: var(--muted);
+}
+.aysen-timeline-section { display: grid; gap: .6rem; }
+.aysen-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: .65rem;
+}
+.aysen-timeline-item {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: .65rem;
+  align-items: start;
+}
+.aysen-timeline-step {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--dark);
+  color: #fff;
+  font-size: .78rem;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
+.aysen-timeline-body {
+  background: #f8faf9;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: .65rem .75rem;
+  display: grid;
+  gap: .25rem;
+  min-width: 0;
+}
+.aysen-timeline-top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: .3rem;
+  font-size: .86rem;
+}
+.aysen-timeline-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem .75rem;
+  font-size: .78rem;
+  color: var(--muted);
+}
+.aysen-insuf-list li {
+  padding: .55rem .7rem;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  font-size: .82rem;
+  display: grid;
+  gap: .2rem;
+}
+
+@media (min-width: 720px) {
+  .aysen-header { padding: 1.25rem 1.4rem; }
+  .aysen-tablist { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .aysen-arrastre-grid,
+  .aysen-sectors-grid,
+  .aysen-inst-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .aysen-project-money { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .aysen-search-bar { grid-template-columns: 2fr 1fr 1fr auto; align-items: end; }
+}
+@media (min-width: 1024px) {
+  .aysen-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

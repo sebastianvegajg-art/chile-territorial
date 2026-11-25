@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from . import demo
+from .aysen_piloto import router as aysen_piloto_router
 from .conectores import router as conectores_router
 from .fase2 import router as fase2_router
 from .lote_oficial import LoteOficial
@@ -172,6 +173,7 @@ def crear_app(demo_activa=False, lote_oficial=None):
 
     app.include_router(conectores_router)
     app.include_router(fase2_router)
+    app.include_router(aysen_piloto_router)
 
     return app
 
