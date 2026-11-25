@@ -9,9 +9,10 @@ import { DemografiaView } from './DemografiaView'
 import { EstructuraView } from './EstructuraView'
 import { LaboratorioView } from './LaboratorioView'
 import { PoliticalView } from './PoliticalView'
+import { PorGobiernoView } from './PorGobiernoView'
 import './styles.css'
 
-type Page = 'comparar' | 'politica' | 'estructura' | 'demografia' | 'laboratorio' | 'metodologia'
+type Page = 'comparar' | 'politica' | 'por-gobierno' | 'estructura' | 'demografia' | 'laboratorio' | 'metodologia'
 
 const POLITICAL_HASHES = new Set([
   '#politica',
@@ -26,6 +27,7 @@ const POLITICAL_HASHES = new Set([
 function resolvePage(hash: string, current: Page = 'comparar'): Page {
   if (hash === '#contenido') return current
   if (hash === '#metodologia') return 'metodologia'
+  if (hash === '#por-gobierno') return 'por-gobierno'
   if (hash === '#estructura') return 'estructura'
   if (hash === '#demografia') return 'demografia'
   if (hash === '#laboratorio') return 'laboratorio'
@@ -352,6 +354,7 @@ function App() {
             </div>
             <nav aria-label="Principal">
               <a href="#comparar" aria-current={page === 'comparar' ? 'page' : undefined}>Comparador</a>
+              <a href="#por-gobierno" aria-current={page === 'por-gobierno' ? 'page' : undefined}>Por gobierno</a>
               <a href="#metodologia" aria-current={page === 'metodologia' ? 'page' : undefined}>Metodología</a>
             </nav>
           </div>
@@ -363,6 +366,7 @@ function App() {
           <nav className="module-bar wrap" aria-label="Módulos del observatorio">
             <a href="#comparar" aria-current={page === 'comparar' ? 'page' : undefined}>Comparador PIB</a>
             <a href="#politica" aria-current={page === 'politica' ? 'page' : undefined}>Vista Política Aysén</a>
+            <a href="#por-gobierno" aria-current={page === 'por-gobierno' ? 'page' : undefined}>Por gobierno</a>
             <a href="#estructura" aria-current={page === 'estructura' ? 'page' : undefined}>Estructura 16 Regiones</a>
             <a href="#demografia" aria-current={page === 'demografia' ? 'page' : undefined}>PIB per Cápita</a>
             <a href="#laboratorio" aria-current={page === 'laboratorio' ? 'page' : undefined}>Laboratorio y Dossiers</a>
@@ -372,7 +376,9 @@ function App() {
       )}
 
       <main id="contenido" className="wrap" tabIndex={-1}>
-        {page === 'politica' ? (
+        {page === 'por-gobierno' ? (
+          <PorGobiernoView />
+        ) : page === 'politica' ? (
           standalone ? (
             <section className="panel standalone-notice" aria-labelledby="standalone-politica-titulo">
               <p className="eyebrow">Copia HTML autónoma sin conexión</p>

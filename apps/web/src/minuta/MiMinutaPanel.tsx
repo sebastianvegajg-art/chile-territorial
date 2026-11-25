@@ -59,7 +59,7 @@ export function MinutaSheet({
   sheetRef?: React.RefObject<HTMLDivElement | null>
   isPrintOnly?: boolean
 }) {
-  const { referencias, indicePorCifraId, indiceObra } = useMemo(
+  const { referencias, indicePorCifraId, indiceObra, indiceGlosaA, indiceGlosaB } = useMemo(
     () => buildReferenciasNumeradas(draft),
     [draft],
   )
@@ -101,11 +101,22 @@ export function MinutaSheet({
               width={118}
               height={23}
             />
-            <span>Observatorio de Aysén</span>
+            <span>
+              {draft.contextoComparacion
+                ? `Por gobierno · ${draft.contextoComparacion.tema}`
+                : 'Observatorio de Aysén'}
+            </span>
           </span>
           <span className="minuta-sheet-date">Minuta de 1 página · {fechaGeneracion}</span>
         </div>
         <h2 className="minuta-sheet-title">{tituloVisible}</h2>
+        {draft.contextoComparacion && (
+          <div className="minuta-sheet-comp-bar" aria-label="Administraciones y períodos comparados">
+            <span><strong>Gobiernos:</strong> {draft.contextoComparacion.administraciones}</span>
+            <span><strong>Períodos:</strong> {draft.contextoComparacion.periodos}</span>
+            <span><strong>Alcance:</strong> {draft.contextoComparacion.alcance}</span>
+          </div>
+        )}
       </header>
 
       <section className="minuta-sheet-answer" aria-label="Respuesta en lenguaje cotidiano">
@@ -220,6 +231,37 @@ export function MinutaSheet({
         </section>
       )}
 
+      {draft.glosaRelevante && (
+        <section className="minuta-sheet-glosa" aria-label="Pasaje relevante de la glosa presupuestaria">
+          <div className="minuta-example-head">
+            <span className="minuta-sheet-section-label">
+              Glosa presupuestaria ({draft.glosaRelevante.anioA} vs {draft.glosaRelevante.anioB})
+            </span>
+            <span className="minuta-example-tag">{draft.glosaRelevante.trazaNumeracion}</span>
+          </div>
+          <h3 className="minuta-example-name">{draft.glosaRelevante.titulo}</h3>
+          <div className="minuta-glosa-cols">
+            <div className="minuta-glosa-col">
+              <strong>
+                {draft.glosaRelevante.anioA} · {draft.glosaRelevante.ubicacionA}
+                {indiceGlosaA ? <sup className="minuta-ref-sup">[{indiceGlosaA}]</sup> : null}
+              </strong>
+              <p>«{draft.glosaRelevante.pasajeA}»</p>
+            </div>
+            <div className="minuta-glosa-col">
+              <strong>
+                {draft.glosaRelevante.anioB} · {draft.glosaRelevante.ubicacionB}
+                {indiceGlosaB ? <sup className="minuta-ref-sup">[{indiceGlosaB}]</sup> : null}
+              </strong>
+              <p>«{draft.glosaRelevante.pasajeB}»</p>
+            </div>
+          </div>
+          <p className="minuta-glosa-diff-line">
+            <strong>Diferencia práctica:</strong> {draft.glosaRelevante.diferenciaPractica}
+          </p>
+        </section>
+      )}
+
       <footer className="minuta-sheet-footnotes" aria-label="Fuentes oficiales numeradas">
         <span className="minuta-sheet-section-label">Fuentes y referencias</span>
         {referencias.length === 0 ? (
@@ -284,8 +326,10 @@ export function MiMinutaPanel({
   const [measuredHeight, setMeasuredHeight] = useState<number | null>(null)
 
   // Estado del asistente «¿Qué quieres explicar?»
-  const [selectedQuestion, setSelectedQuestion] = useState<Exclude<MinutaPreguntaId, 'libre'>>(
-    draft.preguntaId !== 'libre' ? draft.preguntaId : 'gasto_corriente_institucion',
+  const [selectedQuestion, setSelectedQuestion] = useState<Exclude<MinutaPreguntaId, 'libre' | 'por_gobierno_vivienda'>>(
+    draft.preguntaId !== 'libre' && draft.preguntaId !== 'por_gobierno_vivienda'
+      ? draft.preguntaId
+      : 'gasto_corriente_institucion',
   )
   const [wizAnio, setWizAnio] = useState<number>(defaultAnio)
   const [wizRolInst, setWizRolInst] = useState<RolBilletera>('municipal')
@@ -1076,6 +1120,34 @@ export function MiMinutaPanel({
                 </div>
               )}
 
+              {/* Glosa relevante (desde Por gobierno) */}
+              {draft.glosaRelevante && (
+                <div className="minuta-editor-section">
+                  <div className="minuta-editor-section-head">
+                    <h4>Pasaje de glosa incorporado ({draft.glosaRelevante.anioA} vs {draft.glosaRelevante.anioB})</h4>
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() =>
+                        onDraftChange({
+                          ...draft,
+                          glosaRelevante: null,
+                          actualizadoEn: new Date().toISOString(),
+                        })
+                      }
+                    >
+                      Quitar glosa
+                    </button>
+                  </div>
+                  <div className="minuta-editor-item">
+                    <strong>{draft.glosaRelevante.titulo}</strong>
+                    <p className="minuta-editor-context">
+                      {draft.glosaRelevante.trazaNumeracion} · {draft.glosaRelevante.diferenciaPractica}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="minuta-wizard-actions">
                 <button
                   type="button"
@@ -1122,7 +1194,7 @@ export function MiMinutaPanel({
                     type="button"
                     className="primary minuta-print-btn"
                     onClick={handlePrint}
-                    disabled={draft.cifras.length === 0 && !draft.obraEjemplo && !draft.titulo.trim()}
+                    disabled={draft.cifras.length === 0 && !draft.obraEjemplo && !draft.glosaRelevante && !draft.titulo.trim()}
                   >
                     Imprimir o guardar como PDF
                   </button>

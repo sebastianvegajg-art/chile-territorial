@@ -18,6 +18,7 @@ export type MinutaPreguntaId =
   | 'gasto_corriente_institucion'
   | 'arrastre_inversion'
   | 'gestion_obra'
+  | 'por_gobierno_vivienda'
   | 'libre'
 
 export interface MinutaFuenteRef {
@@ -81,6 +82,30 @@ export interface MinutaObraEjemplo {
   fuente: MinutaFuenteRef
 }
 
+export interface MinutaContextoComparacion {
+  tema: string
+  alcance: string
+  administraciones: string
+  periodos: string
+}
+
+export interface MinutaGlosaRelevante {
+  id: string
+  titulo: string
+  materia: string
+  trazaNumeracion: string
+  anioA: number
+  anioB: number
+  ubicacionA: string
+  ubicacionB: string
+  pasajeA: string
+  pasajeB: string
+  diferenciaPractica: string
+  notaEvidenciaGasto: string
+  fuenteA: MinutaFuenteRef
+  fuenteB: MinutaFuenteRef
+}
+
 export interface MinutaDraft {
   version: 1
   preguntaId: MinutaPreguntaId
@@ -89,6 +114,8 @@ export interface MinutaDraft {
   respuestaEditadaManualmente: boolean
   cifras: MinutaCifra[]
   obraEjemplo: MinutaObraEjemplo | null
+  contextoComparacion?: MinutaContextoComparacion | null
+  glosaRelevante?: MinutaGlosaRelevante | null
   actualizadoEn: string
 }
 
@@ -105,7 +132,7 @@ export interface MinutaExtensionReport {
 }
 
 export interface MinutaPreguntaOpcion {
-  id: Exclude<MinutaPreguntaId, 'libre'>
+  id: Exclude<MinutaPreguntaId, 'libre' | 'por_gobierno_vivienda'>
   etiqueta: string
   descripcion: string
   filtrosResumen: string
@@ -230,6 +257,8 @@ export function createEmptyMinutaDraft(): MinutaDraft {
     respuestaEditadaManualmente: false,
     cifras: [],
     obraEjemplo: null,
+    contextoComparacion: null,
+    glosaRelevante: null,
     actualizadoEn: new Date().toISOString(),
   }
 }
@@ -249,6 +278,12 @@ export function loadMinutaDraft(): MinutaDraft {
       respuestaEditadaManualmente: Boolean(parsed.respuestaEditadaManualmente),
       cifras: Array.isArray(parsed.cifras) ? parsed.cifras : [],
       obraEjemplo: parsed.obraEjemplo && typeof parsed.obraEjemplo === 'object' ? parsed.obraEjemplo : null,
+      contextoComparacion:
+        parsed.contextoComparacion && typeof parsed.contextoComparacion === 'object'
+          ? parsed.contextoComparacion
+          : null,
+      glosaRelevante:
+        parsed.glosaRelevante && typeof parsed.glosaRelevante === 'object' ? parsed.glosaRelevante : null,
       actualizadoEn: typeof parsed.actualizadoEn === 'string' ? parsed.actualizadoEn : new Date().toISOString(),
     }
   } catch {
@@ -273,6 +308,8 @@ export function buildReferenciasNumeradas(draft: MinutaDraft): {
   referencias: MinutaReferenciaNumerada[]
   indicePorCifraId: Record<string, number>
   indiceObra: number | null
+  indiceGlosaA: number | null
+  indiceGlosaB: number | null
 } {
   const map = new Map<string, MinutaReferenciaNumerada>()
   const referencias: MinutaReferenciaNumerada[] = []
@@ -293,8 +330,10 @@ export function buildReferenciasNumeradas(draft: MinutaDraft): {
   }
 
   const indiceObra = draft.obraEjemplo ? register(draft.obraEjemplo.fuente) : null
+  const indiceGlosaA = draft.glosaRelevante ? register(draft.glosaRelevante.fuenteA) : null
+  const indiceGlosaB = draft.glosaRelevante ? register(draft.glosaRelevante.fuenteB) : null
 
-  return { referencias, indicePorCifraId, indiceObra }
+  return { referencias, indicePorCifraId, indiceObra, indiceGlosaA, indiceGlosaB }
 }
 
 /* ============================================================
@@ -304,9 +343,30 @@ export function buildReferenciasNumeradas(draft: MinutaDraft): {
 export function generarRespuestaCotidiana(draft: MinutaDraft): string {
   const cifras = draft.cifras
   const obra = draft.obraEjemplo
+  const glosa = draft.glosaRelevante
+  const ctx = draft.contextoComparacion
 
-  if (cifras.length === 0 && !obra) {
+  if (cifras.length === 0 && !obra && !glosa) {
     return ''
+  }
+
+  // Caso especial: comparación Por gobierno (presupuesto y/o glosa)
+  if (draft.preguntaId === 'por_gobierno_vivienda' || ctx || glosa) {
+    const disponiblesPg = cifras.filter(c => c.disponible)
+    const primera = disponiblesPg[0]
+    const segunda = disponiblesPg[1]
+    const partePresup = primera
+      ? `${primera.etiqueta}: ${primera.valorTexto}${primera.subvalor ? ` (${primera.subvalor})` : ''}${segunda ? `; ${segunda.etiqueta.toLowerCase()}: ${segunda.valorTexto}` : ''}.`
+      : ctx
+        ? `Comparación nacional de ${ctx.tema} entre ${ctx.administraciones} (${ctx.periodos}).`
+        : ''
+    const parteGlosa = glosa
+      ? ` En reglas de uso (${glosa.anioA} vs ${glosa.anioB}), «${glosa.titulo}»: ${glosa.diferenciaPractica.split('.')[0]}.`
+      : ''
+    const cierre = partePresup && parteGlosa
+      ? ' Regla legal y ejecución presupuestaria se informan por separado.'
+      : ''
+    return `${partePresup}${parteGlosa}${cierre}`.trim()
   }
 
   const disponibles = cifras.filter(c => c.disponible)
@@ -471,8 +531,12 @@ export function analizarExtensionUnaPagina(
   }, 0)
   const cifrasLineas = filasCifras * maxCardLineas
   const obraLineas = draft.obraEjemplo ? 7.5 : 0
+  const ctxLineas = draft.contextoComparacion ? 2 : 0
+  const glosaLineas = draft.glosaRelevante ? 8.5 : 0
   const fuentesLineas = 2 + referencias.length * 1.9
-  const estimacionLineas = Math.round(6 + tituloLineas + respuestaLineas + cifrasLineas + obraLineas + fuentesLineas)
+  const estimacionLineas = Math.round(
+    6 + ctxLineas + tituloLineas + respuestaLineas + cifrasLineas + obraLineas + glosaLineas + fuentesLineas,
+  )
 
   // Carta vertical imprimible (11in - 1in márgenes = ~10in; vista digital tiene ~15% más aire vertical)
   const heightOverflow = typeof measuredHeightPx === 'number' && measuredHeightPx > 1060
