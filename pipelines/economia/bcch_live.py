@@ -62,15 +62,11 @@ from pipelines.economia.bde_api import (  # noqa: E402
     descubrir_series_totales,
     formatear_decimal,
     parsear_catalogo_anual,
+    sanear_mensaje,
 )
 
 INSTITUCION_BCCH = "Banco Central de Chile (BDE SI3 REST API)"
 FRECUENCIAS_VALIDAS = frozenset({"ANNUAL", "QUARTERLY", "MONTHLY", "DAILY"})
-_CLAVES_TOKEN = (
-    "BCCH_API_TOKEN",
-    "VITE_BCENTRAL_TOKEN",
-    "NEXT_PUBLIC_BCENTRAL_TOKEN",
-)
 _CACHE_CATALOGO_TTL_SEGUNDOS = 15 * 60
 _CACHE_ESTRUCTURA_TTL = timedelta(hours=24)
 _CACHE_ESTRUCTURA_DEFAULT = _RAIZ_REPO / "data" / "raw" / "bcch-aysen-sectorial-live.json"
@@ -95,14 +91,12 @@ def limpiar_cache_memoria() -> None:
 def obtener_credenciales_bcch(env_path: Path | None = None) -> Credenciales:
     """Resuelve credenciales BCCh desde entorno del proceso y luego ``.env``.
 
-    Orden de búsqueda en cada nivel:
-    ``BCCH_API_TOKEN``, ``VITE_BCENTRAL_TOKEN``, ``NEXT_PUBLIC_BCENTRAL_TOKEN``,
-    o el par ``BCCH_API_USER`` + ``BCCH_API_PASS``.
+    Acepta exclusivamente credenciales privadas del servidor:
+    ``BCCH_API_TOKEN`` o el par ``BCCH_API_USER`` + ``BCCH_API_PASS``.
     """
-    for clave in _CLAVES_TOKEN:
-        valor = os.environ.get(clave, "").strip()
-        if valor:
-            return Credenciales(modo="token", token=valor)
+    token_env = os.environ.get("BCCH_API_TOKEN", "").strip()
+    if token_env:
+        return Credenciales(modo="token", token=token_env)
 
     usuario_env = os.environ.get("BCCH_API_USER", "").strip()
     clave_env = os.environ.get("BCCH_API_PASS", "").strip()
@@ -114,10 +108,9 @@ def obtener_credenciales_bcch(env_path: Path | None = None) -> Credenciales:
     if ruta_env.is_file():
         archivo_valores = cargar_archivo_env(ruta_env)
 
-    for clave in _CLAVES_TOKEN:
-        valor = archivo_valores.get(clave, "").strip()
-        if valor:
-            return Credenciales(modo="token", token=valor)
+    token_archivo = archivo_valores.get("BCCH_API_TOKEN", "").strip()
+    if token_archivo:
+        return Credenciales(modo="token", token=token_archivo)
 
     usuario = usuario_env or archivo_valores.get("BCCH_API_USER", "").strip()
     clave = clave_env or archivo_valores.get("BCCH_API_PASS", "").strip()
@@ -129,7 +122,7 @@ def obtener_credenciales_bcch(env_path: Path | None = None) -> Credenciales:
         )
 
     raise FaltaTokenBCChError(
-        "Falta configurar BCCH_API_TOKEN (o VITE_BCENTRAL_TOKEN) en .env local del servidor."
+        "Falta configurar BCCH_API_TOKEN o BCCH_API_USER + BCCH_API_PASS en el entorno o en .env local del servidor."
     )
 
 
@@ -634,10 +627,12 @@ def _parsear_serie_trimestral(
     }
 
 
-def _leer_cache_estructura_vigente(
+def _leer_cache_estructura_archivo(
     ruta_cache: Path,
     anio_desde: int,
     anio_hasta: int,
+    *,
+    exigir_vigencia: bool = True,
 ) -> dict[str, Any] | None:
     if not ruta_cache.is_file():
         return None
@@ -650,33 +645,53 @@ def _leer_cache_estructura_vigente(
 
     rango = datos.get("rango_solicitado")
     traza = datos.get("fuente_trazabilidad")
-    if not isinstance(rango, dict) or not isinstance(traza, dict):
+    if (
+        not isinstance(rango, dict)
+        or not isinstance(traza, dict)
+        or not isinstance(datos.get("resumen_pib"), dict)
+        or not isinstance(datos.get("actividades"), list)
+        or not isinstance(datos.get("ultimo_anio"), int)
+    ):
         return None
     if rango.get("anio_desde") != anio_desde or rango.get("anio_hasta") != anio_hasta:
         return None
 
-    ahora = datetime.now(timezone.utc)
-    extraido_str = traza.get("extraido_en")
-    dt_cache: datetime | None = None
-    if isinstance(extraido_str, str) and extraido_str.strip():
-        try:
-            dt_cache = datetime.fromisoformat(extraido_str.replace("Z", "+00:00"))
-            if dt_cache.tzinfo is None:
-                dt_cache = dt_cache.replace(tzinfo=timezone.utc)
-        except ValueError:
-            dt_cache = None
-    if dt_cache is None:
-        try:
-            dt_cache = datetime.fromtimestamp(ruta_cache.stat().st_mtime, tz=timezone.utc)
-        except OSError:
-            return None
+    if exigir_vigencia:
+        ahora = datetime.now(timezone.utc)
+        extraido_str = traza.get("extraido_en")
+        dt_cache: datetime | None = None
+        if isinstance(extraido_str, str) and extraido_str.strip():
+            try:
+                dt_cache = datetime.fromisoformat(extraido_str.replace("Z", "+00:00"))
+                if dt_cache.tzinfo is None:
+                    dt_cache = dt_cache.replace(tzinfo=timezone.utc)
+            except ValueError:
+                dt_cache = None
+        if dt_cache is None:
+            try:
+                dt_cache = datetime.fromtimestamp(ruta_cache.stat().st_mtime, tz=timezone.utc)
+            except OSError:
+                return None
 
-    if (ahora - dt_cache) >= _CACHE_ESTRUCTURA_TTL or (ahora - dt_cache) < timedelta(seconds=-60):
-        return None
+        if (ahora - dt_cache) >= _CACHE_ESTRUCTURA_TTL or (ahora - dt_cache) < timedelta(seconds=-60):
+            return None
 
     resultado = deepcopy(datos)
     resultado["fuente_trazabilidad"]["desde_cache"] = True
     return resultado
+
+
+def _leer_cache_estructura_vigente(
+    ruta_cache: Path,
+    anio_desde: int,
+    anio_hasta: int,
+) -> dict[str, Any] | None:
+    return _leer_cache_estructura_archivo(
+        ruta_cache,
+        anio_desde,
+        anio_hasta,
+        exigir_vigencia=True,
+    )
 
 
 def _guardar_cache_estructura(
@@ -717,7 +732,43 @@ def obtener_estructura_aysen_live(
         if desde_disco is not None:
             return desde_disco
 
-    credenciales = obtener_credenciales_bcch(env_path=env_path)
+    credenciales: Credenciales | None = None
+    try:
+        credenciales = obtener_credenciales_bcch(env_path=env_path)
+        resultado = _descargar_estructura_aysen_live(
+            credenciales=credenciales,
+            anio_desde=anio_desde,
+            anio_hasta_efectivo=anio_hasta_efectivo,
+            refresh=refresh,
+        )
+    except (BdeApiError, OSError) as error:
+        respaldo = _leer_cache_estructura_archivo(
+            ruta_cache,
+            anio_desde,
+            anio_hasta_efectivo,
+            exigir_vigencia=False,
+        )
+        if respaldo is not None:
+            detalle = sanear_mensaje(str(error), credenciales).strip() or "falla en consulta viva BCCh"
+            respaldo["fuente_trazabilidad"]["desde_cache"] = True
+            respaldo["fuente_trazabilidad"]["estado_actualizacion"] = "respaldo_ultimo_corte_aprobado"
+            respaldo["fuente_trazabilidad"]["advertencia_actualizacion"] = (
+                f"No se pudo refrescar desde BCCh ({detalle}); se sirve el último corte aprobado en caché."
+            )
+            return respaldo
+        raise
+
+    _guardar_cache_estructura(ruta_cache, resultado, credenciales)
+    return resultado
+
+
+def _descargar_estructura_aysen_live(
+    *,
+    credenciales: Credenciales,
+    anio_desde: int,
+    anio_hasta_efectivo: int,
+    refresh: bool,
+) -> dict[str, Any]:
     extraido_en = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     # 1) Catálogo anual -> 4 series totales + 13 series sectoriales nominales de Aysén
@@ -1115,5 +1166,4 @@ def obtener_estructura_aysen_live(
         },
     }
 
-    _guardar_cache_estructura(ruta_cache, resultado, credenciales)
     return resultado

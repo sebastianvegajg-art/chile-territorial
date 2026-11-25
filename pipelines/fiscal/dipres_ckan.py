@@ -67,6 +67,27 @@ _MESES_ORDEN: tuple[tuple[str, int], ...] = (
     ("febrero", 2),
     ("enero", 1),
 )
+_MESES_VARIANTES_ORDEN: tuple[tuple[str, int], ...] = (
+    ("setiembre", 9),
+    ("dic", 12),
+    ("nov", 11),
+    ("oct", 10),
+    ("sept", 9),
+    ("sep", 9),
+    ("ago", 8),
+    ("jul", 7),
+    ("jun", 6),
+    ("may", 5),
+    ("abr", 4),
+    ("mar", 3),
+    ("feb", 2),
+    ("ene", 1),
+)
+_MESES_NOMBRE_POR_NUMERO: dict[int, str] = {num: nombre for nombre, num in _MESES_ORDEN}
+
+ESTADO_ACTUALIZACION_VIVO = "actualizado_en_vivo"
+ESTADO_ACTUALIZACION_CACHE = "cache_vigente"
+ESTADO_ACTUALIZACION_RESPALDO = "respaldo_ultimo_corte_aprobado"
 
 _PATRON_MILES_PUNTO = re.compile(r"^[1-9]\d{0,2}(?:\.\d{3})+$")
 _PATRON_MILES_COMA = re.compile(r"^[1-9]\d{0,2}(?:,\d{3}){2,}$")
@@ -1021,6 +1042,90 @@ def agregar_registros_aysen(
     }
 
 
+def detectar_mes_corte(
+    columna_ejecucion: str | None = None,
+    package_title: str | None = None,
+    package_name: str | None = None,
+) -> int | None:
+    """Detecta el mes de corte acumulado (1..12) desde columna de ejecución o metadatos.
+
+    Prioriza ``columna_ejecucion`` (campo efectivamente sumado), luego ``package_title``
+    y finalmente ``package_name``. Busca primero nombres completos de mes en orden
+    descendente (diciembre..enero) para capturar el límite superior de rangos como
+    "enero a agosto", y luego variantes/abreviaturas delimitadas.
+    """
+    for fuente in (columna_ejecucion, package_title, package_name):
+        norm = _normalizar_texto(fuente)
+        if not norm:
+            continue
+        for mes, numero in _MESES_ORDEN:
+            if re.search(rf"(?<![a-z]){mes}(?![a-z])", norm):
+                return numero
+        for variante, numero in _MESES_VARIANTES_ORDEN:
+            if re.search(rf"(?<![a-z]){variante}(?![a-z])", norm):
+                return numero
+    return None
+
+
+def _construir_advertencia_comparabilidad_meses(
+    mes_corte: int | None,
+    anio: int | None = None,
+) -> str | None:
+    """Construye advertencia metodológica cuando el corte es menor a 12 meses."""
+    if mes_corte == 12:
+        return None
+    if mes_corte is not None and 1 <= mes_corte < 12:
+        nombre_mes = _MESES_NOMBRE_POR_NUMERO[mes_corte]
+        prefijo = f"El ejercicio {anio}" if anio is not None else "El ejercicio"
+        return (
+            f"{prefijo} corresponde a ejecución acumulada al mes {mes_corte} "
+            f"({nombre_mes}) y no debe compararse en bruto contra un cierre anual "
+            "de 12 meses sin usar meses equivalentes."
+        )
+    return (
+        "No fue posible determinar el mes de corte del ejercicio; no debe compararse "
+        "en bruto contra un cierre anual de 12 meses sin verificar meses equivalentes."
+    )
+
+
+def _asegurar_metadatos_corte(contenido: dict[str, Any]) -> dict[str, Any]:
+    """Completa metadatos de mes de corte y comparabilidad si faltan en caché previo."""
+    traza = contenido.get("fuente_trazabilidad")
+    if not isinstance(traza, dict):
+        return contenido
+    mes_corte = traza.get("mes_corte")
+    if not isinstance(mes_corte, int) or isinstance(mes_corte, bool) or not (1 <= mes_corte <= 12):
+        mes_corte = detectar_mes_corte(
+            columna_ejecucion=traza.get("columna_ejecucion"),
+            package_title=traza.get("package_title"),
+            package_name=traza.get("package_name"),
+        )
+        traza["mes_corte"] = mes_corte
+    traza["es_cierre_anual"] = mes_corte == 12
+    if "advertencia_comparabilidad_meses" not in traza:
+        anio_raw = contenido.get("anio")
+        anio_val = anio_raw if isinstance(anio_raw, int) and not isinstance(anio_raw, bool) else None
+        traza["advertencia_comparabilidad_meses"] = _construir_advertencia_comparabilidad_meses(
+            mes_corte, anio_val
+        )
+    return contenido
+
+
+def _leer_cache_archivo(cache_path: Path) -> dict[str, Any] | None:
+    """Lee y valida la estructura básica de un archivo de caché JSON sin evaluar TTL."""
+    if not cache_path.exists():
+        return None
+    try:
+        contenido = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(contenido, dict) or not isinstance(
+        contenido.get("fuente_trazabilidad"), dict
+    ):
+        return None
+    return _asegurar_metadatos_corte(contenido)
+
+
 def _leer_cache_vigente(cache_path: Path, ttl_segundos: int) -> dict[str, Any] | None:
     """Lee el archivo de caché si existe y no ha expirado su TTL."""
     if not cache_path.exists():
@@ -1029,14 +1134,29 @@ def _leer_cache_vigente(cache_path: Path, ttl_segundos: int) -> dict[str, Any] |
         edad = time.time() - cache_path.stat().st_mtime
         if edad < 0 or edad > ttl_segundos:
             return None
-        contenido = json.loads(cache_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except OSError:
         return None
-    if not isinstance(contenido, dict) or not isinstance(
-        contenido.get("fuente_trazabilidad"), dict
-    ):
+    contenido = _leer_cache_archivo(cache_path)
+    if contenido is None:
         return None
     contenido["fuente_trazabilidad"]["desde_cache"] = True
+    contenido["fuente_trazabilidad"]["estado_actualizacion"] = ESTADO_ACTUALIZACION_CACHE
+    contenido["fuente_trazabilidad"]["advertencia_actualizacion"] = None
+    return contenido
+
+
+def _leer_cache_respaldo(cache_path: Path, error: Exception) -> dict[str, Any] | None:
+    """Devuelve el último corte aprobado guardado cuando falla la actualización CKAN."""
+    contenido = _leer_cache_archivo(cache_path)
+    if contenido is None:
+        return None
+    traza = contenido["fuente_trazabilidad"]
+    traza["desde_cache"] = True
+    traza["estado_actualizacion"] = ESTADO_ACTUALIZACION_RESPALDO
+    traza["advertencia_actualizacion"] = (
+        f"No fue posible actualizar desde DIPRES CKAN ({type(error).__name__}: {error}); "
+        "se devuelve el último corte aprobado guardado en caché local."
+    )
     return contenido
 
 
@@ -1062,6 +1182,10 @@ def obtener_ejecucion_aysen_live(
 ) -> dict[str, Any]:
     """Obtiene la ejecución presupuestaria en vivo de Aysén desde DIPRES CKAN (`datos.gob.cl`).
 
+    Si falla la consulta externa a CKAN al intentar actualizar y existe un archivo
+    de caché previo válido en ``cache_path``, devuelve el último corte aprobado
+    guardado marcando ``estado_actualizacion = "respaldo_ultimo_corte_aprobado"``.
+
     Args:
         anio: Ejercicio fiscal a consultar (por defecto ``2025``).
         refresh: Si ``True``, omite caché local y consulta nuevamente la API CKAN.
@@ -1084,38 +1208,44 @@ def obtener_ejecucion_aysen_live(
     pa_checker = check_presupuesto_abierto or _consultar_presupuesto_abierto
     ahora_utc = datetime.now(timezone.utc)
 
-    paquete_ejec, recurso_ejec = _buscar_paquete_ejecucion(anio, fetcher, ahora_utc.year)
-    resource_id = str(recurso_ejec["id"])
-
-    # Búsqueda paralela documental de Ley de Presupuestos inicial y vigente
-    ley_presupuestos = _buscar_ley_presupuestos(anio, fetcher)
-
-    # (a) Partida 31 (Financiamiento Gobiernos Regionales)
-    registros_p31, campos_p31 = _datastore_search_paginado(
-        resource_id, fetcher, filters={"Partida": "31"}
-    )
-
-    # (b) Partida 05 (Ministerio del Interior / Delegación Presidencial Regional de Aysén)
     try:
-        registros_p05, campos_p05 = _datastore_search_paginado(
-            resource_id, fetcher, filters={"Partida": "05"}
-        )
-    except DipresCkanError:
-        registros_p05, campos_p05 = [], []
-    if not registros_p05:
-        try:
-            registros_p05, campos_p05_alt = _datastore_search_paginado(
-                resource_id, fetcher, filters={"Partida": "5"}
-            )
-            if campos_p05_alt and not campos_p05:
-                campos_p05 = campos_p05_alt
-        except DipresCkanError:
-            registros_p05 = []
+        paquete_ejec, recurso_ejec = _buscar_paquete_ejecucion(anio, fetcher, ahora_utc.year)
+        resource_id = str(recurso_ejec["id"])
 
-    # (c) Búsqueda textual de servicios públicos ejecutores en Aysén
-    registros_q_aysen, campos_q = _datastore_search_paginado(
-        resource_id, fetcher, q="AYSÉN"
-    )
+        # Búsqueda paralela documental de Ley de Presupuestos inicial y vigente
+        ley_presupuestos = _buscar_ley_presupuestos(anio, fetcher)
+
+        # (a) Partida 31 (Financiamiento Gobiernos Regionales)
+        registros_p31, campos_p31 = _datastore_search_paginado(
+            resource_id, fetcher, filters={"Partida": "31"}
+        )
+
+        # (b) Partida 05 (Ministerio del Interior / Delegación Presidencial Regional de Aysén)
+        try:
+            registros_p05, campos_p05 = _datastore_search_paginado(
+                resource_id, fetcher, filters={"Partida": "05"}
+            )
+        except DipresCkanError:
+            registros_p05, campos_p05 = [], []
+        if not registros_p05:
+            try:
+                registros_p05, campos_p05_alt = _datastore_search_paginado(
+                    resource_id, fetcher, filters={"Partida": "5"}
+                )
+                if campos_p05_alt and not campos_p05:
+                    campos_p05 = campos_p05_alt
+            except DipresCkanError:
+                registros_p05 = []
+
+        # (c) Búsqueda textual de servicios públicos ejecutores en Aysén
+        registros_q_aysen, campos_q = _datastore_search_paginado(
+            resource_id, fetcher, q="AYSÉN"
+        )
+    except (DipresCkanError, HTTPError, URLError, TimeoutError, OSError) as exc:
+        respaldo = _leer_cache_respaldo(ruta_cache, exc)
+        if respaldo is not None:
+            return respaldo
+        raise
 
     campos_combinados: list[str] = []
     for lista_campos in (campos_p31, campos_p05, campos_q):
@@ -1132,6 +1262,13 @@ def obtener_ejecucion_aysen_live(
 
     presupuesto_abierto = pa_checker(TIMEOUT_PRESUPUESTO_ABIERTO_SEGUNDOS)
     extraido_en = ahora_utc.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    mes_corte = detectar_mes_corte(
+        columna_ejecucion=agregado["columna_ejecucion"],
+        package_title=paquete_ejec.get("title"),
+        package_name=paquete_ejec.get("name"),
+    )
+    es_cierre_anual = mes_corte == 12
+    advertencia_comparabilidad = _construir_advertencia_comparabilidad_meses(mes_corte, anio)
 
     resultado: dict[str, Any] = {
         "anio": anio,
@@ -1153,12 +1290,17 @@ def obtener_ejecucion_aysen_live(
             "columna_vigente": agregado["columna_vigente"],
             "columna_inicial": agregado["columna_inicial"],
             "etapa_informada": "ejecucion_acumulada",
+            "mes_corte": mes_corte,
+            "es_cierre_anual": es_cierre_anual,
+            "advertencia_comparabilidad_meses": advertencia_comparabilidad,
             "actualizado_en": paquete_ejec.get("metadata_modified"),
             "extraido_en": extraido_en,
             "unidad_origen": "miles CLP",
             "unidad_salida": "millones CLP",
             "moneda": "CLP",
             "desde_cache": False,
+            "estado_actualizacion": ESTADO_ACTUALIZACION_VIVO,
+            "advertencia_actualizacion": None,
             "registros_unicos_procesados": agregado["registros_unicos_procesados"],
             "registros_no_clp_excluidos": agregado["registros_no_clp_excluidos"],
         },

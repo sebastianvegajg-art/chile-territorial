@@ -15,6 +15,8 @@ import type {
 } from './services/bcchService'
 import { fetchDipresAysen } from './services/dipresService'
 import type { DipresAysenResponse } from './services/dipresService'
+import { fetchDemografiaPoblacion } from './services/fase2Service'
+import type { DemografiaPoblacionResponse } from './services/fase2Service'
 import { fetchSinimAysen, importSinimFile, normalizeSinimErrors, sinimTemplateUrl } from './services/sinimService'
 import type { SinimAysenResponse, SinimErrorFila } from './services/sinimService'
 
@@ -27,25 +29,30 @@ const QUICK_DELTAS = [-15, -10, 0, 10, 15] as const
 const MULTIPLIERS = [
   {
     value: 1.0,
-    label: '1,0x · Directo contable',
-    description: 'Impacto contable directo puro sobre el valor agregado de Administración Pública, sin arrastre secundario.',
+    label: '1,0x · Directo contable (multiplicador hipotético)',
+    description: 'Supuesto hipotético de impacto contable directo puro sobre el Valor Agregado de Administración Pública (BCCh), sin arrastre secundario.',
   },
   {
     value: 0.8,
-    label: '0,8x · Conservador',
-    description: 'Supuesto conservador con filtración parcial de demanda hacia fuera de la región.',
+    label: '0,8x · Conservador (multiplicador hipotético)',
+    description: 'Supuesto hipotético conservador con filtración parcial de demanda hacia fuera de la región.',
   },
   {
     value: 1.25,
-    label: '1,25x · Arrastre moderado',
-    description: 'Supuesto de encadenamiento local moderado sobre comercio y servicios regionales.',
+    label: '1,25x · Arrastre moderado (multiplicador hipotético)',
+    description: 'Supuesto hipotético de encadenamiento local moderado sobre comercio y servicios regionales.',
   },
   {
     value: 1.5,
-    label: '1,5x · Encadenamiento ampliado',
-    description: 'Escenario de sensibilidad superior con mayor circulación de remuneraciones en la economía local.',
+    label: '1,5x · Encadenamiento ampliado (multiplicador hipotético)',
+    description: 'Escenario hipotético de sensibilidad superior con mayor circulación de remuneraciones en la economía local.',
   },
 ] as const
+
+function fmtClp(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return 'Sin dato'
+  return `$ ${num0.format(value)}`
+}
 
 function fmtMillions(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return 'Sin dato'
@@ -248,9 +255,9 @@ function MissingBcchTokenPanel({
       </div>
       <p>{message}</p>
       <ol className="token-steps">
-        <li>Abre o crea el archivo <code className="mono">.env</code> local en el backend de <code className="mono">chile-territorial</code> (excluido de Git).</li>
-        <li>Define <code className="mono">BCCH_API_TOKEN=tu_credencial_oficial</code> (o <code className="mono">VITE_BCENTRAL_TOKEN</code> para compatibilidad local del servidor).</li>
-        <li>Reinicia el servidor API y vuelve a consultar. Este visor jamás rellena indicadores con cifras simuladas ni expone credenciales al navegador.</li>
+        <li>Abre o crea el archivo <code className="mono">.env</code> local en el servidor backend de <code className="mono">chile-territorial</code> (excluido de Git).</li>
+        <li>Define <code className="mono">BCCH_API_TOKEN=tu_credencial_oficial</code> (o <code className="mono">BCCH_API_USER</code> y <code className="mono">BCCH_API_PASS</code>) exclusivamente en el entorno del servidor.</li>
+        <li>Reinicia el servidor API y vuelve a consultar. El frontend jamás recibe credenciales ni rellena indicadores con cifras simuladas.</li>
       </ol>
       <button type="button" className="primary" onClick={onRetry}>
         Reintentar consulta BCCh
@@ -305,6 +312,9 @@ export function PoliticalView() {
     error: ApiServiceError | Error | null
   }>({ loading: true, data: null, error: null })
   const [axis2Mode, setAxis2Mode] = useState<'bars' | 'table'>('bars')
+
+  // Estado Demografía INE + PIB per cápita (Eje 1 · silencioso si aún no está disponible)
+  const [demografia, setDemografia] = useState<DemografiaPoblacionResponse | null>(null)
 
   // Estado DIPRES (Ejes 3 y 4)
   const [dipresYear, setDipresYear] = useState<number>(2025)
@@ -400,12 +410,24 @@ export function PoliticalView() {
     }
   }, [])
 
+  const loadDemografiaSilenciosa = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const data = await fetchDemografiaPoblacion(2013, currentYear, signal)
+      if (!signal?.aborted && data.observaciones.length > 0) {
+        setDemografia(data)
+      }
+    } catch {
+      // Silencioso: si /api/v1/demografia/poblacion aún no está publicado, se mantiene el aviso de pendiente.
+    }
+  }, [currentYear])
+
   useEffect(() => {
     const controller = new AbortController()
     loadBcch(false, controller.signal)
     loadSinim(controller.signal)
+    loadDemografiaSilenciosa(controller.signal)
     return () => controller.abort()
-  }, [loadBcch, loadSinim])
+  }, [loadBcch, loadSinim, loadDemografiaSilenciosa])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -415,6 +437,21 @@ export function PoliticalView() {
 
   // Datos derivados BCCh (solo desde observaciones reales)
   const resumen = bcch.data?.resumen_pib ?? null
+
+  // Datos derivados PIB per cápita oficial (BCCh + INE) para Eje 1
+  const perCapitaEje1 = useMemo(() => {
+    if (!demografia || demografia.observaciones.length === 0) return null
+    const targetYear = resumen?.anio ?? demografia.ultimo_anio
+    const pickYear = demografia.observaciones.some(o => o.anio === targetYear && o.territorio === '11')
+      ? targetYear
+      : demografia.ultimo_anio
+    const aysen = demografia.observaciones.find(o => o.territorio === '11' && o.anio === pickYear) ?? null
+    const chile = demografia.observaciones.find(o => o.territorio === 'CL' && o.anio === pickYear) ?? null
+    if (!aysen || (aysen.pib_per_capita_real_clp === null && aysen.pib_per_capita_nominal_clp === null)) {
+      return null
+    }
+    return { anio: pickYear, aysen, chile }
+  }, [demografia, resumen?.anio])
   const actividadesOrdenadas = useMemo(() => {
     if (!bcch.data?.actividades) return []
     return [...bcch.data.actividades].sort((a, b) => {
@@ -715,6 +752,7 @@ export function PoliticalView() {
               loadBcch(true)
               loadDipres(dipresYear, true)
               loadSinim()
+              loadDemografiaSilenciosa()
             }}
           >
             Actualizar fuentes
@@ -754,6 +792,14 @@ export function PoliticalView() {
               <p className="empty">El servicio BCCh no devolvió un resumen de PIB para el período solicitado.</p>
             ) : (
               <>
+                {bcch.data?.estado_actualizacion === 'respaldo_ultimo_corte_aprobado' && (
+                  <p className="notice" role="status">
+                    <strong>Respaldo del último corte aprobado (BCCh):</strong>{' '}
+                    {bcch.data.advertencia_respaldo ||
+                      'La actualización en vivo no respondió; se muestran las observaciones verificadas del último corte oficial guardado.'}
+                  </p>
+                )}
+
                 <div className="pol-kpi-grid">
                   <div className="pol-kpi-card is-highlight">
                     <span className="kpi-label">Participación en PIB nacional nominal ({resumen.anio ?? '—'})</span>
@@ -871,9 +917,44 @@ export function PoliticalView() {
                           <td className="numeric">100,00%</td>
                           <td>Precios corrientes</td>
                         </tr>
+                        {perCapitaEje1 && (
+                          <>
+                            <tr className="row-admin">
+                              <th scope="row">PIB per cápita real ({perCapitaEje1.anio} · BCCh + INE)</th>
+                              <td className="numeric">{fmtClp(perCapitaEje1.aysen.pib_per_capita_real_clp)}</td>
+                              <td className="numeric">{fmtClp(perCapitaEje1.chile?.pib_per_capita_real_clp)}</td>
+                              <td>
+                                CLP/hab. · Aysén = {perCapitaEje1.aysen.indice_real_chile_100 !== null ? num1.format(perCapitaEje1.aysen.indice_real_chile_100) : '—'} (Chile = 100)
+                              </td>
+                            </tr>
+                            <tr className="row-admin">
+                              <th scope="row">PIB per cápita nominal ({perCapitaEje1.anio} · BCCh + INE)</th>
+                              <td className="numeric">{fmtClp(perCapitaEje1.aysen.pib_per_capita_nominal_clp)}</td>
+                              <td className="numeric">{fmtClp(perCapitaEje1.chile?.pib_per_capita_nominal_clp)}</td>
+                              <td>
+                                CLP/hab. · Aysén = {perCapitaEje1.aysen.indice_nominal_chile_100 !== null ? num1.format(perCapitaEje1.aysen.indice_nominal_chile_100) : '—'} (Chile = 100)
+                              </td>
+                            </tr>
+                          </>
+                        )}
                       </tbody>
                     </table>
                   </div>
+                  {perCapitaEje1 && (
+                    <div className="eje1-pc-banner">
+                      <div>
+                        <strong>PIB per cápita oficial acoplado (BCCh + INE · {perCapitaEje1.anio}):</strong>{' '}
+                        Aysén registra <strong>{fmtClp(perCapitaEje1.aysen.pib_per_capita_real_clp)}</strong> reales por habitante
+                        {perCapitaEje1.chile?.pib_per_capita_real_clp !== null && perCapitaEje1.chile?.pib_per_capita_real_clp !== undefined
+                          ? ` frente a ${fmtClp(perCapitaEje1.chile.pib_per_capita_real_clp)} en Chile`
+                          : ''}
+                        {' '}(nominal: {fmtClp(perCapitaEje1.aysen.pib_per_capita_nominal_clp)} vs {fmtClp(perCapitaEje1.chile?.pib_per_capita_nominal_clp)}).
+                      </div>
+                      <a className="secondary-btn link-btn" href="#demografia">
+                        Ver módulo PIB per Cápita y Convergencia →
+                      </a>
+                    </div>
+                  )}
                   <SourceFooter
                     {...bcchSourceBase}
                     seriesCodigos={bcchAxis1Codes}
@@ -895,15 +976,28 @@ export function PoliticalView() {
                   <strong>{resumen ? fmtPct(resumen.participacion_nacional_pct) : 'sin dato oficial disponible'}</strong> del PIB nominal de Chile.
                   Esta fracción reducida en la escala agregada nacional suele invisibilizar a la región en reglas de asignación central basadas en volumen bruto.
                 </p>
-                <p>
-                  Sin embargo, Aysén ocupa una vasta superficie austral con baja densidad poblacional y valor geoestratégico en conectividad, soberanía y recursos naturales.
-                  <strong> Nota sobre PIB per cápita:</strong> el cálculo per cápita exacto queda explícitamente pendiente de acoplar la serie censal y de proyecciones poblacionales oficiales del <strong>INE</strong>; este observatorio no introduce denominadores demográficos fijos.
-                </p>
+                {perCapitaEje1 ? (
+                  <p>
+                    Al cruzar las cuentas regionales del <strong>BCCh</strong> con la población oficial del <strong>INE ({perCapitaEje1.anio})</strong>, el{' '}
+                    <strong>PIB per cápita real de Aysén alcanza {fmtClp(perCapitaEje1.aysen.pib_per_capita_real_clp)}</strong>{' '}
+                    (nominal: <strong>{fmtClp(perCapitaEje1.aysen.pib_per_capita_nominal_clp)}</strong>), frente a{' '}
+                    <strong>{fmtClp(perCapitaEje1.chile?.pib_per_capita_real_clp)}</strong> reales en Chile
+                    {perCapitaEje1.aysen.indice_real_chile_100 !== null
+                      ? ` (índice ${num1.format(perCapitaEje1.aysen.indice_real_chile_100)} con Chile = 100)`
+                      : ''}.
+                    El bajo peso agregado coexiste así con una producción por habitante comparable o superior al promedio nacional.
+                  </p>
+                ) : (
+                  <p>
+                    Sin embargo, Aysén ocupa una vasta superficie austral con baja densidad poblacional y valor geoestratégico en conectividad, soberanía y recursos naturales.
+                    <strong> Nota sobre PIB per cápita:</strong> el cálculo per cápita exacto queda explícitamente pendiente de acoplar la serie censal y de proyecciones poblacionales oficiales del <strong>INE</strong>; este observatorio no introduce denominadores demográficos fijos.
+                  </p>
+                )}
               </>
             }
             evidenciaFavorable="La participación nominal observada confirma un peso reducido en el total nacional, lo que genera asimetría de visibilidad cuando los criterios fiscales premian escala poblacional o recaudación agregada."
-            evidenciaContraria="Un bajo peso agregado no implica por sí mismo estancamiento económico: la variación real anual de Aysén puede divergir significativamente del ciclo nacional por shocks sectoriales específicos."
-            limiteInferencia="El PIB nominal regional mide producción localizada en el territorio y no captura directamente ingreso disponible de los hogares ni PIB per cápita mientras no se enlace la serie oficial INE."
+            evidenciaContraria="Un bajo peso agregado no implica por sí mismo estancamiento económico: la variación real anual y el producto por habitante de Aysén pueden divergir significativamente del promedio nacional por escala demográfica y shocks sectoriales específicos."
+            limiteInferencia="El PIB nominal y per cápita regional miden producción localizada en el territorio (escala nacional y regional, nunca imputable a comunas) y no equivalen directamente al ingreso disponible de los hogares."
             source={{ ...bcchSourceBase, seriesCodigos: bcchAxis1Codes }}
           />
         </div>
@@ -1210,6 +1304,30 @@ export function PoliticalView() {
               <p className="empty">No se encontraron registros DIPRES para el ejercicio {dipresYear}.</p>
             ) : (
               <>
+                {dipres.data.estado_actualizacion === 'respaldo_ultimo_corte_aprobado' && (
+                  <p className="notice" role="status">
+                    <strong>Respaldo del último corte aprobado (DIPRES):</strong>{' '}
+                    {dipres.data.advertencia_respaldo ||
+                      'La consulta en vivo a datos.gob.cl no respondió; se exhibe el último corte oficial validado en caché local.'}
+                  </p>
+                )}
+
+                {(dipres.data.advertencia_comparabilidad_meses ||
+                  (dipres.data.mes_corte !== null && dipres.data.mes_corte !== undefined && dipres.data.mes_corte < 12)) && (
+                  <div className="brecha-box" role="note">
+                    <strong>
+                      Advertencia de comparabilidad por meses equivalentes
+                      {dipres.data.mes_corte !== null && dipres.data.mes_corte !== undefined
+                        ? ` · Corte mes ${dipres.data.mes_corte}${dipres.data.mes_corte_nombre ? ` (${dipres.data.mes_corte_nombre})` : ''}`
+                        : ''}
+                    </strong>
+                    <p>
+                      {dipres.data.advertencia_comparabilidad_meses ||
+                        `El ejercicio ${dipres.data.anio} cubre ejecución acumulada parcial (mes ${dipres.data.mes_corte}). No comparar directamente sus montos acumulados contra cierres anuales de diciembre (12 meses) sin restringir ambos ejercicios a meses equivalentes.`}
+                    </p>
+                  </div>
+                )}
+
                 <div className="pol-kpi-grid">
                   <div className="pol-kpi-card">
                     <span className="kpi-label">Gasto Corriente (Subt. 21–26)</span>
@@ -1671,16 +1789,19 @@ export function PoliticalView() {
       ============================================================ */}
       <section id="simulador-aysen" className="axis-section" aria-labelledby="simulador-titulo">
         <div className="axis-header">
-          <span className="axis-badge is-sim">Simulador paramétrico</span>
+          <span className="axis-badge is-sim">Simulador hipotético</span>
           <div>
-            <h2 id="simulador-titulo">Simulador de Impacto del Gasto Operativo Público en el PIB de Aysén</h2>
-            <p className="subtle">Sensibilidad contable alimentada exclusivamente por las observaciones oficiales vigentes del Banco Central.</p>
+            <h2 id="simulador-titulo">Simulador Hipotético del Valor Agregado de Administración Pública en el PIB de Aysén</h2>
+            <p className="subtle">
+              Sensibilidad aritmética sobre el <strong>Valor Agregado de la actividad Administración Pública (Cuentas Nacionales BCCh)</strong> — magnitud contable distinta del gasto presupuestario DIPRES y del empleo público.
+            </p>
           </div>
         </div>
 
         <article className="panel simulator-panel">
           <div className="sim-disclaimer" role="note">
-            <strong>Escenario simulado bajo supuestos paramétricos · No equivale a observación oficial ni estimación causal.</strong>
+            <strong>Escenario simulado con multiplicadores explícitamente hipotéticos · No equivale a observación oficial ni estimación causal.</strong>{' '}
+            La variación opera exclusivamente sobre el <strong>Valor Agregado nominal de Administración Pública (BCCh)</strong>, que mide remuneraciones y consumo de capital fijo en Cuentas Nacionales y <strong>no debe confundirse con el gasto presupuestario ejecutado DIPRES</strong> (Subtítulos 21–33) ni con dotaciones de empleo público.
           </div>
 
           {bcch.loading ? (
@@ -1701,7 +1822,7 @@ export function PoliticalView() {
               <div className="sim-controls">
                 <div className="sim-control-block">
                   <div className="sim-label-row">
-                    <label htmlFor={sliderId}>Variación simulada del gasto operativo público</label>
+                    <label htmlFor={sliderId}>Variación hipotética del Valor Agregado de Administración Pública (BCCh)</label>
                     <div className="sim-num-wrap">
                       <label htmlFor={numInputId} className="sr-only">Porcentaje de variación</label>
                       <input
@@ -1750,7 +1871,7 @@ export function PoliticalView() {
                 </div>
 
                 <div className="sim-control-block">
-                  <label htmlFor={multiplierId}>Supuesto de encadenamiento regional</label>
+                  <label htmlFor={multiplierId}>Multiplicador regional explícitamente hipotético</label>
                   <select
                     id={multiplierId}
                     value={multiplier}
@@ -1765,15 +1886,15 @@ export function PoliticalView() {
 
                 <dl className="sim-formula">
                   <div>
-                    <dt>Línea base oficial ({resumen?.anio ?? 'último año'})</dt>
+                    <dt>Línea base oficial BCCh ({resumen?.anio ?? 'último año'})</dt>
                     <dd>
-                      Admin. Pública: <strong>{fmtMillions(simAdminBase)}</strong> · PIB Aysén: <strong>{fmtMillions(simPibBase)}</strong>
+                      VA Admin. Pública (BCCh): <strong>{fmtMillions(simAdminBase)}</strong> · PIB nominal Aysén: <strong>{fmtMillions(simPibBase)}</strong>
                     </dd>
                   </div>
                   <div>
-                    <dt>Fórmula aplicada</dt>
+                    <dt>Fórmula aritmética hipotética</dt>
                     <dd className="mono">
-                      ΔPIB = (Admin. Pública × {deltaPct > 0 ? `+${deltaPct}` : deltaPct}%) × {num2.format(multiplier)}x
+                      ΔPIB = (VA Admin. Pública BCCh × {deltaPct > 0 ? `+${deltaPct}` : deltaPct}%) × {num2.format(multiplier)}x (hipotético)
                     </dd>
                   </div>
                 </dl>

@@ -25,8 +25,6 @@ SERIE_ID = r"^[A-Za-z0-9][A-Za-z0-9._-]*$"
 FECHA_ISO = r"^\d{4}-\d{2}-\d{2}$"
 _VARS_SENSIBLES = (
     "BCCH_API_TOKEN",
-    "VITE_BCENTRAL_TOKEN",
-    "NEXT_PUBLIC_BCENTRAL_TOKEN",
     "BCCH_API_USER",
     "BCCH_API_PASS",
 )

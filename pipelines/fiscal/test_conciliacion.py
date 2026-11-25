@@ -8,11 +8,14 @@ from decimal import Decimal
 from pathlib import Path
 
 from conciliacion import (
+    ADVERTENCIA_CAJA_DISPONIBILIDAD,
     BILLETERAS_VALIDAS,
     COBERTURAS_TERRITORIALES_VALIDAS,
+    ESQUEMA_CRUCE1_DISPONIBILIDAD,
     PRECISION_DECIMAL,
     MovimientoFiscal,
     TransferenciaConciliada,
+    analizar_disponibilidad_presupuestaria,
     clasificar_cobertura_territorial,
     consolidar_billeteras,
     saldo_no_comprometido,
@@ -450,6 +453,169 @@ class ConsolidacionBilleterasTest(unittest.TestCase):
             clasificar_cobertura_territorial(None),
             "sin_asignacion",
         )
+
+
+class Cruce1DisponibilidadPresupuestariaTest(unittest.TestCase):
+    def test_disponibilidad_con_arrastre_compromisos_y_desfase_devengo_pago(self):
+        res = analizar_disponibilidad_presupuestaria(
+            presupuesto_inicial="9000",
+            presupuesto_vigente="10000",
+            arrastre_ejercicios_anteriores="2500",
+            compromisos_plurianuales_ejercicio="1500",
+            nuevos_compromisos="2000",
+            devengo_acumulado="4500",
+            pagos_acumulados="3800",
+        )
+        self.assertEqual(res["esquema"], ESQUEMA_CRUCE1_DISPONIBILIDAD)
+        self.assertEqual(res["esquema"], "fiscal-cruce1-disponibilidad-v1")
+        self.assertTrue(res["etapas_separadas"])
+        self.assertEqual(res["variacion_vigente_sobre_inicial"], Decimal("1000"))
+        self.assertEqual(res["saldo_por_devengar"], Decimal("5500"))
+        # 2500 + 1500 + 2000 = 6000
+        self.assertEqual(res["compromiso_total_ejercicio"], Decimal("6000"))
+        # 10000 - max(4500, 6000) = 4000
+        self.assertEqual(res["margen_no_comprometido"], Decimal("4000"))
+        self.assertEqual(res["compromiso_pendiente_aplicado"], Decimal("1500"))
+        self.assertEqual(
+            res["metodo_margen_no_comprometido"],
+            "vigente_menos_max_devengo_o_compromiso_total",
+        )
+        self.assertIsNone(res["motivo_margen_no_comprometido"])
+        # 100 * 2500 / 10000 = 25%
+        self.assertEqual(res["porcentaje_arrastre_sobre_vigente"], Decimal("25"))
+        # 4500 - 3800 = 700
+        self.assertEqual(res["desfase_devengo_pago"], Decimal("700"))
+        # 100 * 4500 / 10000 = 45%
+        self.assertEqual(res["tasa_ejecucion_pct"], Decimal("45"))
+        self.assertFalse(res["requiere_revision"])
+        self.assertEqual(res["alertas_revision"], [])
+        self.assertEqual(
+            res["advertencia_caja"],
+            "La disponibilidad presupuestaria no equivale a disponibilidad efectiva de caja ni acredita liquidez de tesorería.",
+        )
+        self.assertEqual(res["advertencia_caja"], ADVERTENCIA_CAJA_DISPONIBILIDAD)
+
+    def test_compromisos_faltantes_y_compromiso_pendiente_explicito(self):
+        # Faltan nuevos_compromisos -> margen_no_comprometido es None con motivo explícito
+        sin_comp = analizar_disponibilidad_presupuestaria(
+            presupuesto_inicial="10000",
+            presupuesto_vigente="10000",
+            arrastre_ejercicios_anteriores="2000",
+            compromisos_plurianuales_ejercicio="1000",
+            nuevos_compromisos=None,
+            devengo_acumulado="4000",
+            pagos_acumulados=None,
+        )
+        self.assertEqual(sin_comp["saldo_por_devengar"], Decimal("6000"))
+        self.assertIsNone(sin_comp["compromiso_total_ejercicio"])
+        self.assertIsNone(sin_comp["margen_no_comprometido"])
+        self.assertIsNotNone(sin_comp["motivo_margen_no_comprometido"])
+        self.assertIn("nuevos_compromisos", sin_comp["motivo_margen_no_comprometido"])
+        self.assertIn("margen_no_comprometido", sin_comp["motivos_no_calculable"])
+        self.assertIsNone(sin_comp["desfase_devengo_pago"])
+        self.assertEqual(
+            sin_comp["motivos_no_calculable"]["desfase_devengo_pago"],
+            "pagos_o_devengo_faltante",
+        )
+        self.assertEqual(sin_comp["porcentaje_arrastre_sobre_vigente"], Decimal("20"))
+        self.assertEqual(sin_comp["tasa_ejecucion_pct"], Decimal("40"))
+        self.assertEqual(sin_comp["advertencia_caja"], ADVERTENCIA_CAJA_DISPONIBILIDAD)
+
+        # Con compromiso_pendiente_devengar explícito usa vigente - devengo - pendiente
+        con_pendiente = analizar_disponibilidad_presupuestaria(
+            presupuesto_inicial="10000",
+            presupuesto_vigente="10000",
+            arrastre_ejercicios_anteriores="2000",
+            compromisos_plurianuales_ejercicio=None,
+            nuevos_compromisos=None,
+            devengo_acumulado="4000",
+            pagos_acumulados="3500",
+            compromiso_pendiente_devengar="1800",
+        )
+        self.assertEqual(con_pendiente["margen_no_comprometido"], Decimal("4200"))
+        self.assertEqual(
+            con_pendiente["metodo_margen_no_comprometido"],
+            "vigente_menos_devengo_menos_compromiso_pendiente",
+        )
+        self.assertEqual(con_pendiente["desfase_devengo_pago"], Decimal("500"))
+
+        # Si compromisos_completos=False, nunca estima margen aunque haya valores
+        incompleto = analizar_disponibilidad_presupuestaria(
+            presupuesto_inicial="10000",
+            presupuesto_vigente="10000",
+            arrastre_ejercicios_anteriores="2000",
+            compromisos_plurianuales_ejercicio="1000",
+            nuevos_compromisos="1000",
+            devengo_acumulado="3000",
+            pagos_acumulados="2500",
+            compromisos_completos=False,
+        )
+        self.assertIsNone(incompleto["margen_no_comprometido"])
+        self.assertEqual(
+            incompleto["motivo_margen_no_comprometido"],
+            "compromisos_incompletos_o_no_disponibles",
+        )
+
+    def test_precision_decimal_alertas_revision_y_rechazo_float(self):
+        # Precisión Decimal 34 en divisiones periódicas y alertas de revisión
+        res = analizar_disponibilidad_presupuestaria(
+            presupuesto_inicial="300",
+            presupuesto_vigente="300",
+            arrastre_ejercicios_anteriores="100",
+            compromisos_plurianuales_ejercicio="100",
+            nuevos_compromisos="150",
+            devengo_acumulado="100",
+            pagos_acumulados="120",  # pagos > devengo -> desfase negativo a revisar
+        )
+        self.assertEqual(res["compromiso_total_ejercicio"], Decimal("350"))
+        # Sobrecompromiso: 300 - 350 = -50 (conserva signo y alerta)
+        self.assertEqual(res["margen_no_comprometido"], Decimal("-50"))
+        self.assertEqual(res["desfase_devengo_pago"], Decimal("-20"))
+        self.assertTrue(res["requiere_revision"])
+        self.assertIn("margen_no_comprometido_negativo_revisar", res["alertas_revision"])
+        self.assertIn("pagos_superiores_a_devengo_revisar", res["alertas_revision"])
+        self.assertEqual(
+            len(res["tasa_ejecucion_pct"].as_tuple().digits),
+            PRECISION_DECIMAL,
+        )
+        self.assertEqual(
+            len(res["porcentaje_arrastre_sobre_vigente"].as_tuple().digits),
+            PRECISION_DECIMAL,
+        )
+        self.assertEqual(res["advertencia_caja"], ADVERTENCIA_CAJA_DISPONIBILIDAD)
+
+        # Rechaza float en cualquier argumento
+        with self.assertRaises(TypeError):
+            analizar_disponibilidad_presupuestaria(
+                presupuesto_inicial=1000.0,  # type: ignore[arg-type]
+                presupuesto_vigente="1000",
+                arrastre_ejercicios_anteriores="100",
+                compromisos_plurianuales_ejercicio="100",
+                nuevos_compromisos="100",
+                devengo_acumulado="100",
+                pagos_acumulados="100",
+            )
+        with self.assertRaises(TypeError):
+            analizar_disponibilidad_presupuestaria(
+                presupuesto_inicial="1000",
+                presupuesto_vigente="1000",
+                arrastre_ejercicios_anteriores="100",
+                compromisos_plurianuales_ejercicio="100",
+                nuevos_compromisos="100",
+                devengo_acumulado="100",
+                pagos_acumulados=50.5,  # type: ignore[arg-type]
+            )
+        # Rechaza compromisos negativos
+        with self.assertRaises(ValueError):
+            analizar_disponibilidad_presupuestaria(
+                presupuesto_inicial="1000",
+                presupuesto_vigente="1000",
+                arrastre_ejercicios_anteriores="-10",
+                compromisos_plurianuales_ejercicio="0",
+                nuevos_compromisos="0",
+                devengo_acumulado="0",
+                pagos_acumulados="0",
+            )
 
 
 if __name__ == "__main__":

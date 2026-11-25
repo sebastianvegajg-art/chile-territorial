@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 from . import demo
 from .conectores import router as conectores_router
+from .fase2 import router as fase2_router
 from .lote_oficial import LoteOficial
 
 PREFIJO = "/api/v1"
@@ -170,6 +171,7 @@ def crear_app(demo_activa=False, lote_oficial=None):
         return value
 
     app.include_router(conectores_router)
+    app.include_router(fase2_router)
 
     return app
 

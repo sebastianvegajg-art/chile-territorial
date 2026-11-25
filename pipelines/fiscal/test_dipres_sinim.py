@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from urllib.error import URLError
 from urllib.parse import parse_qs, urlsplit
 
 _DIR_FISCAL = Path(__file__).resolve().parent
@@ -538,6 +539,301 @@ class TestAgregacionYFlujoDipresLive(unittest.TestCase):
             )
             self.assertEqual(res["totales_gobierno_central_aysen"]["gasto_corriente_sub_21_26"], "48000")
             self.assertTrue(res["presupuesto_abierto"]["disponible"])
+
+    def test_deteccion_mes_corte_12_8_9_y_advertencia_comparabilidad(self):
+        self.assertEqual(
+            dipres_ckan.detectar_mes_corte("Ejecucion a Diciembre", "Ejecución 2025"),
+            12,
+        )
+        self.assertEqual(
+            dipres_ckan.detectar_mes_corte("Ejecución a Agosto", "Ejecución 2026"),
+            8,
+        )
+        self.assertEqual(
+            dipres_ckan.detectar_mes_corte("Ejecución a Septiembre", "Ejecución 2026"),
+            9,
+        )
+        # Fallback a package_title cuando columna_ejecucion no trae nombre de mes
+        self.assertEqual(
+            dipres_ckan.detectar_mes_corte(
+                "Ejecución Acumulada",
+                "Ejecución Presupuestaria a Agosto de 2026 Gobierno Central",
+            ),
+            8,
+        )
+        # Rango "Enero a Agosto" detecta el límite superior (8)
+        self.assertEqual(
+            dipres_ckan.detectar_mes_corte("Ejecución Enero a Agosto"),
+            8,
+        )
+        self.assertIsNone(dipres_ckan.detectar_mes_corte("Ejecución Acumulada", "Sin mes"))
+
+        def construir_fake_http(anio: int, titulo: str, nombre: str, col_ejec: str):
+            def _fake(url: str, timeout: int) -> dict:
+                parsed = urlsplit(url)
+                qs = parse_qs(parsed.query)
+                if parsed.path.endswith("/package_search"):
+                    if "ley de presupuestos" in qs.get("q", [""])[0]:
+                        return {"success": True, "result": {"results": []}}
+                    return {
+                        "success": True,
+                        "result": {
+                            "results": [
+                                {
+                                    "name": nombre,
+                                    "title": titulo,
+                                    "metadata_modified": f"{anio}-11-01T10:00:00Z",
+                                    "resources": [
+                                        {
+                                            "id": f"res-{anio}",
+                                            "name": "Ejecución A nivel Programa",
+                                            "format": "CSV",
+                                            "datastore_active": True,
+                                        }
+                                    ],
+                                }
+                            ]
+                        },
+                    }
+                if parsed.path.endswith("/datastore_search"):
+                    if qs.get("q", [None])[0] == "AYSÉN":
+                        return {
+                            "success": True,
+                            "result": {
+                                "total": 1,
+                                "fields": [
+                                    {"id": "Partida"},
+                                    {"id": "Nombre Capitulo"},
+                                    {"id": "Subtitulo"},
+                                    {"id": col_ejec},
+                                ],
+                                "records": [
+                                    {
+                                        "_id": 1,
+                                        "Partida": "16",
+                                        "Capitulo": "36",
+                                        "Nombre Capitulo": "Servicio de Salud Aysén",
+                                        "Subtitulo": "21",
+                                        col_ejec: "30.000.000",
+                                    }
+                                ],
+                            },
+                        }
+                    return {"success": True, "result": {"total": 0, "fields": [], "records": []}}
+                raise AssertionError(url)
+
+            return _fake
+
+        pa_ok = lambda _t: {  # noqa: E731
+            "url": f"{dipres_ckan.PRESUPUESTO_ABIERTO_BASE}/about-data",
+            "disponible": True,
+            "http_status": 200,
+            "nota": "OK",
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # 1) Diciembre -> mes_corte=12, es_cierre_anual=True, sin advertencia
+            res_dic = dipres_ckan.obtener_ejecucion_aysen_live(
+                anio=2025,
+                refresh=True,
+                cache_path=Path(tmpdir) / "dic2025.json",
+                http_get_json=construir_fake_http(
+                    2025,
+                    "Ejecución Presupuestaria a Diciembre de 2025 Gobierno Central Total",
+                    "ejecucion-diciembre-2025",
+                    "Ejecucion a Diciembre",
+                ),
+                check_presupuesto_abierto=pa_ok,
+            )
+            traza_dic = res_dic["fuente_trazabilidad"]
+            self.assertEqual(traza_dic["mes_corte"], 12)
+            self.assertTrue(traza_dic["es_cierre_anual"])
+            self.assertIsNone(traza_dic["advertencia_comparabilidad_meses"])
+            self.assertEqual(traza_dic["estado_actualizacion"], "actualizado_en_vivo")
+
+            # 2) Agosto -> mes_corte=8, es_cierre_anual=False, advertencia explícita
+            res_ago = dipres_ckan.obtener_ejecucion_aysen_live(
+                anio=2026,
+                refresh=True,
+                cache_path=Path(tmpdir) / "ago2026.json",
+                http_get_json=construir_fake_http(
+                    2026,
+                    "Ejecución Presupuestaria a Agosto de 2026 Gobierno Central",
+                    "ejecucion-agosto-2026",
+                    "Ejecución a Agosto",
+                ),
+                check_presupuesto_abierto=pa_ok,
+            )
+            traza_ago = res_ago["fuente_trazabilidad"]
+            self.assertEqual(traza_ago["mes_corte"], 8)
+            self.assertFalse(traza_ago["es_cierre_anual"])
+            self.assertIsNotNone(traza_ago["advertencia_comparabilidad_meses"])
+            self.assertIn("mes 8", traza_ago["advertencia_comparabilidad_meses"].lower())
+            self.assertIn("12 meses", traza_ago["advertencia_comparabilidad_meses"].lower())
+            self.assertIn("meses equivalentes", traza_ago["advertencia_comparabilidad_meses"].lower())
+
+            # 3) Septiembre -> mes_corte=9, es_cierre_anual=False, advertencia explícita
+            res_sep = dipres_ckan.obtener_ejecucion_aysen_live(
+                anio=2026,
+                refresh=True,
+                cache_path=Path(tmpdir) / "sep2026.json",
+                http_get_json=construir_fake_http(
+                    2026,
+                    "Ejecución Presupuestaria Septiembre 2026 Gobierno Central",
+                    "ejecucion-septiembre-2026",
+                    "Ejecución Acumulada",
+                ),
+                check_presupuesto_abierto=pa_ok,
+            )
+            traza_sep = res_sep["fuente_trazabilidad"]
+            self.assertEqual(traza_sep["mes_corte"], 9)
+            self.assertFalse(traza_sep["es_cierre_anual"])
+            self.assertIsNotNone(traza_sep["advertencia_comparabilidad_meses"])
+            self.assertIn("mes 9", traza_sep["advertencia_comparabilidad_meses"].lower())
+            self.assertIn("meses equivalentes", traza_sep["advertencia_comparabilidad_meses"].lower())
+
+    def test_respaldo_ultimo_corte_aprobado_cuando_falla_ckan(self):
+        def fake_http_ok(url: str, timeout: int) -> dict:
+            parsed = urlsplit(url)
+            qs = parse_qs(parsed.query)
+            if parsed.path.endswith("/package_search"):
+                if "ley de presupuestos" in qs.get("q", [""])[0]:
+                    return {"success": True, "result": {"results": []}}
+                return {
+                    "success": True,
+                    "result": {
+                        "results": [
+                            {
+                                "name": "ejecucion-agosto-2026",
+                                "title": "Ejecución Presupuestaria a Agosto de 2026 Gobierno Central",
+                                "metadata_modified": "2026-09-20T12:00:00Z",
+                                "resources": [
+                                    {
+                                        "id": "res-ago-2026",
+                                        "name": "Ejecución A nivel Programa",
+                                        "format": "CSV",
+                                        "datastore_active": True,
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                }
+            if parsed.path.endswith("/datastore_search"):
+                if qs.get("q", [None])[0] == "AYSÉN":
+                    return {
+                        "success": True,
+                        "result": {
+                            "total": 1,
+                            "fields": [
+                                {"id": "Partida"},
+                                {"id": "Nombre Capitulo"},
+                                {"id": "Subtitulo"},
+                                {"id": "Ejecución a Agosto"},
+                            ],
+                            "records": [
+                                {
+                                    "_id": 50,
+                                    "Partida": "16",
+                                    "Capitulo": "36",
+                                    "Nombre Capitulo": "Servicio de Salud Aysén",
+                                    "Subtitulo": "21",
+                                    "Ejecución a Agosto": "55.000.000",
+                                }
+                            ],
+                        },
+                    }
+                return {"success": True, "result": {"total": 0, "fields": [], "records": []}}
+            raise AssertionError(url)
+
+        def fake_http_ckan_error(url: str, timeout: int) -> dict:
+            raise dipres_ckan.DipresCkanError("HTTP 503 Servicio no disponible en datos.gob.cl")
+
+        def fake_http_red_error(url: str, timeout: int) -> dict:
+            raise URLError("Sin conectividad hacia datos.gob.cl")
+
+        pa_ok = lambda _t: {  # noqa: E731
+            "url": f"{dipres_ckan.PRESUPUESTO_ABIERTO_BASE}/about-data",
+            "disponible": True,
+            "http_status": 200,
+            "nota": "OK",
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_file = Path(tmpdir) / "dipres-aysen-2026.json"
+
+            # Sin caché previo, el error debe propagarse sin inventar datos
+            with self.assertRaises(dipres_ckan.DipresCkanError):
+                dipres_ckan.obtener_ejecucion_aysen_live(
+                    anio=2026,
+                    refresh=True,
+                    cache_path=cache_file,
+                    http_get_json=fake_http_ckan_error,
+                    check_presupuesto_abierto=pa_ok,
+                )
+            self.assertFalse(cache_file.exists())
+
+            # Sembrar corte aprobado válido en caché
+            aprobado = dipres_ckan.obtener_ejecucion_aysen_live(
+                anio=2026,
+                refresh=True,
+                cache_path=cache_file,
+                http_get_json=fake_http_ok,
+                check_presupuesto_abierto=pa_ok,
+            )
+            self.assertEqual(
+                aprobado["totales_gobierno_central_aysen"]["gasto_corriente_sub_21_26"],
+                "55000",
+            )
+            self.assertEqual(aprobado["fuente_trazabilidad"]["mes_corte"], 8)
+
+            # 1) Al forzar refresh=True y fallar CKAN -> devuelve respaldo del último corte aprobado
+            respaldo_refresh = dipres_ckan.obtener_ejecucion_aysen_live(
+                anio=2026,
+                refresh=True,
+                cache_path=cache_file,
+                http_get_json=fake_http_ckan_error,
+                check_presupuesto_abierto=pa_ok,
+            )
+            traza_resp = respaldo_refresh["fuente_trazabilidad"]
+            self.assertTrue(traza_resp["desde_cache"])
+            self.assertEqual(
+                traza_resp["estado_actualizacion"],
+                "respaldo_ultimo_corte_aprobado",
+            )
+            self.assertIsNotNone(traza_resp["advertencia_actualizacion"])
+            self.assertIn("503", traza_resp["advertencia_actualizacion"])
+            self.assertEqual(traza_resp["mes_corte"], 8)
+            self.assertFalse(traza_resp["es_cierre_anual"])
+            self.assertIsNotNone(traza_resp["advertencia_comparabilidad_meses"])
+            self.assertEqual(
+                respaldo_refresh["totales_gobierno_central_aysen"]["gasto_corriente_sub_21_26"],
+                "55000",
+            )
+
+            # 2) Con caché vencido (> 12h) y error de red (URLError) -> también devuelve último corte aprobado
+            hace_20h = time.time() - (20 * 3600)
+            os.utime(cache_file, (hace_20h, hace_20h))
+            respaldo_red = dipres_ckan.obtener_ejecucion_aysen_live(
+                anio=2026,
+                refresh=False,
+                cache_path=cache_file,
+                http_get_json=fake_http_red_error,
+                check_presupuesto_abierto=pa_ok,
+            )
+            self.assertTrue(respaldo_red["fuente_trazabilidad"]["desde_cache"])
+            self.assertEqual(
+                respaldo_red["fuente_trazabilidad"]["estado_actualizacion"],
+                "respaldo_ultimo_corte_aprobado",
+            )
+            self.assertIn(
+                "URLError",
+                respaldo_red["fuente_trazabilidad"]["advertencia_actualizacion"],
+            )
+            self.assertEqual(
+                respaldo_red["totales_gobierno_central_aysen"]["gasto_corriente_sub_21_26"],
+                "55000",
+            )
 
 
 class TestSinimImporter(unittest.TestCase):

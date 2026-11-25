@@ -56,7 +56,8 @@ h1, h2, h3, p { margin-top: 0; }
   transition: background-color .14s ease, color .14s ease, border-color .14s ease;
 }
 .mode-switch button:hover:not(:disabled) { color: #fff; background: #145c4b; }
-.mode-switch button[aria-pressed="true"] {
+.mode-switch button[aria-pressed="true"],
+.mode-switch button[aria-pressed="true"]:hover:not(:disabled) {
   background: #fff;
   color: var(--dark);
   border-color: #d6ebe3;
@@ -72,6 +73,45 @@ h1, h2, h3, p { margin-top: 0; }
 .masthead nav a:hover { color: #fff; }
 .masthead nav a[aria-current] { color: #fff; border-color: #76dcb9; font-weight: 650; }
 .masthead :focus-visible { outline-color: #9de3ce; }
+
+/* Barra modular de navegación (solo modo conectado, oculta en standalone) */
+.module-bar-wrap {
+  background: #eaf1ec;
+  border-bottom: 1px solid #cedbd2;
+}
+.module-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem .5rem;
+  padding-block: .48rem;
+  min-width: 0;
+}
+.module-bar a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: .25rem .72rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--dark);
+  font-size: .82rem;
+  font-weight: 600;
+  text-decoration: none;
+  line-height: 1.25;
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+}
+.module-bar a:hover {
+  background: #dceae2;
+  border-color: #b1cbbe;
+  color: var(--dark);
+}
+.module-bar a[aria-current="page"] {
+  background: var(--dark);
+  border-color: var(--dark);
+  color: #fff;
+  font-weight: 700;
+}
 
 .intro { padding-block: clamp(2rem, 5vw, 3.6rem) 1.85rem; display: flex; justify-content: space-between; align-items: end; gap: 2rem; }
 .eyebrow { color: var(--accent-dark); font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; margin-bottom: .45rem; }
@@ -1401,15 +1441,232 @@ dialog::backdrop { background: #07392f99; }
   color: var(--ink);
 }
 
+/* ============================================================
+   FASE 2 · ESTRUCTURA 16 REGIONES, DEMOGRAFÍA Y LABORATORIO
+============================================================ */
+.eje1-pc-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .75rem 1rem;
+  padding: .85rem 1rem;
+  background: #ebf7f2;
+  border: 1px solid #a8d4c0;
+  border-left: 4px solid var(--accent);
+  border-radius: 9px;
+  font-size: .85rem;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.fase2-page {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.fase2-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .55rem;
+}
+
+.fase2-controls-bar {
+  padding: 1rem 1.2rem;
+}
+
+.fase2-controls-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .85rem 1rem;
+  align-items: end;
+}
+.fase2-controls-grid .field {
+  margin-bottom: 0;
+}
+
+.fase2-kpi-grid.is-five {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.method-warning-banner {
+  padding: .85rem 1.1rem;
+  background: #fdf5e4;
+  border: 1px solid #e3c47d;
+  border-left: 4px solid #9f6410;
+  border-radius: 10px;
+  color: #4f3307;
+  font-size: .88rem;
+  line-height: 1.5;
+}
+
+.sigma-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: .45rem;
+}
+.sigma-bars .compare-bar-row {
+  padding: .25rem .4rem;
+  border-radius: 6px;
+}
+.sigma-bars .compare-bar-row.is-selected-year {
+  background: #e6f4ee;
+}
+
+/* Laboratorio de investigación y dossiers */
+.lab-form {
+  display: grid;
+  gap: 1rem;
+}
+.lab-form-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);
+  gap: .9rem 1rem;
+  align-items: start;
+}
+.lab-form-row .field {
+  margin-bottom: 0;
+}
+.lab-question-field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: .6rem .75rem;
+  border: 1px solid #a6bbb0;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.45;
+  resize: vertical;
+}
+.lab-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .6rem;
+}
+
+.lab-suggestions {
+  display: grid;
+  gap: .55rem;
+  padding-top: .85rem;
+  border-top: 1px solid var(--line);
+}
+.lab-suggestion-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .65rem;
+}
+.suggestion-card {
+  display: grid;
+  align-content: start;
+  gap: .25rem;
+  text-align: left;
+  padding: .75rem .9rem;
+  border: 1px solid #bfd1c7;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  min-height: 44px;
+  transition: background-color .14s ease, border-color .14s ease;
+}
+.suggestion-card:hover:not(:disabled) {
+  background: #e6f3ec;
+  border-color: var(--accent);
+}
+.suggestion-card strong {
+  font-size: .82rem;
+  color: var(--accent-dark);
+}
+.suggestion-card span {
+  font-size: .83rem;
+  line-height: 1.4;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.protocol-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+.protocol-step {
+  padding: 1rem 1.15rem;
+  background: var(--surface);
+  border: 1px solid #dce6e0;
+  border-radius: 11px;
+  display: grid;
+  gap: .6rem;
+  min-width: 0;
+}
+.protocol-step p {
+  margin: 0;
+  font-size: .88rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.protocol-step-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .55rem;
+}
+.protocol-step-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--dark);
+}
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  padding: .18rem .58rem;
+  border-radius: 999px;
+  background: var(--dark);
+  color: #dff5ec;
+  font-size: .72rem;
+  font-weight: 750;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.dossier-question {
+  font-size: .98rem !important;
+  font-weight: 650;
+  color: var(--dark);
+}
+.dossier-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: .4rem;
+  font-size: .87rem;
+  line-height: 1.5;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1160px) {
+  .fase2-kpi-grid.is-five { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 @media (max-width: 1040px) {
   .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .axis-grid { grid-template-columns: minmax(0, 1fr); }
   .pol-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sim-grid { grid-template-columns: minmax(0, 1fr); }
+  .fase2-controls-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lab-form-row { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 870px) {
   .wrap { width: calc(100% - 44px); }
   .wallets-grid { grid-template-columns: minmax(0, 1fr); }
+  .lab-suggestion-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 760px) {
   .dashboard { grid-template-columns: minmax(0, 1fr); }
@@ -1418,6 +1675,8 @@ dialog::backdrop { background: #07392f99; }
   .regions { max-height: 170px; }
   .result-downloads { justify-items: start; }
   .pol-kpi-grid.is-three { grid-template-columns: minmax(0, 1fr); }
+  .fase2-controls-grid { grid-template-columns: minmax(0, 1fr); }
+  .fase2-kpi-grid.is-five { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 560px) {
   .compare-bar-row,
@@ -1437,6 +1696,7 @@ dialog::backdrop { background: #07392f99; }
 @media (max-width: 520px) {
   .kpi-strip { grid-template-columns: minmax(0, 1fr); }
   .pol-kpi-grid { grid-template-columns: minmax(0, 1fr); }
+  .fase2-kpi-grid.is-five { grid-template-columns: minmax(0, 1fr); }
   .history-hint { display: none; }
 }
 @media (max-width: 440px) {
@@ -1447,6 +1707,8 @@ dialog::backdrop { background: #07392f99; }
   .mode-switch button { flex: 1 1 0; padding: .28rem .45rem; font-size: .76rem; }
   .masthead nav { min-height: 40px; gap: .75rem; }
   .masthead nav a { font-size: .8rem; }
+  .module-bar { gap: .3rem; padding-block: .4rem; }
+  .module-bar a { font-size: .77rem; padding: .22rem .55rem; min-height: 34px; }
   .chart li { grid-template-columns: minmax(4.5rem, 1fr) minmax(1.6rem, 1.1fr) minmax(3rem, max-content); gap: .4rem; }
   .chart-label, .chart-value { font-size: .79rem; }
   .method-definitions { padding: 1.1rem; }
