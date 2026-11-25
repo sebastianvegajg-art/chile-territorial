@@ -3068,3 +3068,1033 @@ dialog::backdrop { background: #07392f99; }
     animation-duration: 0.01ms !important;
   }
 }
+
+
+/* ============================================================
+   MI MINUTA · MINUTA TÉCNICA DE 1 PÁGINA (MÓVIL + ESCRITORIO + PRINT)
+============================================================ */
+
+.aysen-header-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.minuta-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.minuta-trigger-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 15px;
+  border-radius: 999px;
+  border: 1px solid #0d6a54;
+  background: #0d6a54;
+  color: #ffffff;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.16s ease, transform 0.14s ease;
+}
+.minuta-trigger-primary:hover {
+  background: #095240;
+}
+
+.minuta-trigger-draft {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid #c6d6cf;
+  background: #ffffff;
+  color: #163029;
+  font-size: 0.88rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background-color 0.16s ease;
+}
+.minuta-trigger-draft:hover {
+  border-color: #0d6a54;
+  background: #f3faf7;
+}
+.minuta-trigger-draft.has-items {
+  border-color: #0d6a54;
+  background: #eef8f4;
+}
+
+.minuta-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #0d6a54;
+  color: #ffffff;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.minuta-trigger-draft:not(.has-items) .minuta-count-badge {
+  background: #d8e4df;
+  color: #365048;
+}
+
+/* Botón discreto «Agregar a minuta» en tarjetas, gráficos y fichas */
+.minuta-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid #cedbd5;
+  background: #fafdfb;
+  color: #21443a;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.minuta-add-btn:hover {
+  border-color: #0d6a54;
+  background: #eef8f4;
+  color: #0b5a47;
+}
+.minuta-add-btn.is-saved {
+  border-color: #0d6a54;
+  background: #e3f4ec;
+  color: #084a3a;
+}
+
+.aysen-card-actions.is-subtle-row {
+  margin-top: 6px;
+  margin-bottom: 6px;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+/* Toast flotante */
+.minuta-toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  max-width: 460px;
+  margin-left: auto;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid #0d6a54;
+  background: #102a23;
+  color: #f4faf7;
+  font-size: 0.88rem;
+  box-shadow: 0 12px 30px rgba(9, 32, 26, 0.22);
+}
+.minuta-toast .text-button {
+  color: #8ee6ca;
+  font-weight: 700;
+}
+
+/* Modal / Drawer de Mi minuta */
+.minuta-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(11, 24, 21, 0.52);
+  backdrop-filter: blur(2px);
+}
+
+.minuta-drawer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 920px;
+  height: 100%;
+  background: #f8faf9;
+  color: #142420;
+  box-shadow: -8px 0 32px rgba(10, 26, 22, 0.22);
+  overflow: hidden;
+}
+
+.minuta-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  background: #ffffff;
+  border-bottom: 1px solid #dde6e2;
+}
+
+.minuta-drawer-title {
+  margin: 2px 0 0;
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.minuta-close-btn {
+  min-height: 38px;
+  flex-shrink: 0;
+}
+
+.minuta-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px 14px;
+  background: #ffffff;
+  border-bottom: 1px solid #dde6e2;
+}
+
+.minuta-mode-tab {
+  min-height: 40px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid #d5e0db;
+  background: #f5f9f7;
+  color: #2c473f;
+  font-size: 0.82rem;
+  font-weight: 650;
+  line-height: 1.25;
+  cursor: pointer;
+}
+.minuta-mode-tab.is-active {
+  border-color: #0d6a54;
+  background: #0d6a54;
+  color: #ffffff;
+}
+
+.minuta-drawer-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px 16px 32px;
+}
+
+/* Asistente «¿Qué quieres explicar?» */
+.minuta-wizard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.minuta-wizard-intro h3 {
+  margin: 0 0 4px;
+  font-size: 1.15rem;
+}
+
+.minuta-question-options {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.minuta-question-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 13px 15px;
+  border-radius: 12px;
+  border: 1px solid #d4dfda;
+  background: #ffffff;
+  color: #152923;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+.minuta-question-option strong {
+  font-size: 0.94rem;
+  line-height: 1.3;
+}
+.minuta-question-option span {
+  font-size: 0.84rem;
+  color: #4a605a;
+  line-height: 1.4;
+}
+.minuta-question-option small {
+  font-size: 0.76rem;
+  color: #0d6a54;
+  font-weight: 600;
+}
+.minuta-question-option:hover {
+  border-color: #0d6a54;
+}
+.minuta-question-option.is-selected {
+  border-color: #0d6a54;
+  background: #eef8f4;
+  box-shadow: 0 0 0 2px rgba(13, 106, 84, 0.14);
+}
+
+.minuta-filters-box {
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #d9e3df;
+  background: #ffffff;
+}
+.minuta-filters-box h4 {
+  margin: 0 0 10px;
+  font-size: 0.9rem;
+  color: #264139;
+}
+
+.minuta-filters-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+.minuta-filters-grid input[type='search'] {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #c7d5cf;
+  font: inherit;
+}
+
+.minuta-suggestions-block {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.minuta-suggested-title-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #cbe0d7;
+  background: #f2faf6;
+}
+.minuta-suggested-title-box strong {
+  font-size: 0.98rem;
+  color: #0f2c24;
+  line-height: 1.35;
+}
+
+.minuta-missing-alert {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #d79c4c;
+  background: #fff8eb;
+  color: #5c3a09;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.minuta-calc-audit {
+  padding: 13px 15px;
+  border-radius: 12px;
+  border: 1px solid #d8e3de;
+  background: #ffffff;
+}
+.minuta-calc-audit h5 {
+  margin: 0 0 10px;
+  font-size: 0.86rem;
+  color: #254038;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.minuta-calc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px 14px;
+  margin: 0;
+}
+.minuta-calc-grid > div {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f7faf8;
+  border: 1px solid #e6eeea;
+}
+.minuta-calc-grid dt {
+  font-size: 0.76rem;
+  color: #536962;
+  margin-bottom: 2px;
+}
+.minuta-calc-grid dd {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #102a23;
+}
+.minuta-calc-grid dd.is-missing {
+  color: #93530d;
+}
+
+.minuta-suggestions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.minuta-suggestions-list h4 {
+  margin: 0;
+  font-size: 0.94rem;
+}
+
+.minuta-suggestion-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 14px;
+  border-radius: 12px;
+  border: 1px solid #d5e0db;
+  background: #ffffff;
+  cursor: pointer;
+}
+.minuta-suggestion-item.is-checked {
+  border-color: #0d6a54;
+  background: #f5fbf8;
+}
+.minuta-suggestion-item.is-missing {
+  border-color: #dfb071;
+  background: #fffaf2;
+}
+.minuta-suggestion-item input[type='checkbox'] {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  accent-color: #0d6a54;
+  flex-shrink: 0;
+}
+.minuta-suggestion-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.minuta-suggestion-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+.minuta-suggestion-val {
+  font-size: 1.08rem;
+  font-weight: 800;
+  color: #0a5845;
+}
+.minuta-suggestion-val.is-missing {
+  color: #9b510d;
+  font-size: 0.94rem;
+}
+.minuta-suggestion-sub {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 650;
+  color: #1b4b3d;
+}
+.minuta-suggestion-expl {
+  margin: 0;
+  font-size: 0.86rem;
+  color: #293e38;
+  line-height: 1.4;
+}
+.minuta-suggestion-meta {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #546b64;
+  line-height: 1.35;
+}
+.minuta-suggestion-missing {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #7e4409;
+  line-height: 1.35;
+}
+
+.minuta-wizard-actions,
+.minuta-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+/* Editor del borrador */
+.minuta-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.minuta-fit-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.minuta-fit-banner.is-ok {
+  border: 1px solid #a9d5c5;
+  background: #edf9f4;
+  color: #0d4b3c;
+}
+.minuta-fit-banner.is-alerta {
+  border: 1px solid #d99f4c;
+  background: #fff7e8;
+  color: #653c07;
+}
+.minuta-fit-banner ul {
+  margin: 4px 0 0 18px;
+  padding: 0;
+}
+
+.minuta-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.minuta-field label {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #19322b;
+}
+.minuta-field label small {
+  font-weight: 500;
+  color: #5a7069;
+}
+.minuta-field input[type='text'],
+.minuta-field textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #c5d4ce;
+  background: #ffffff;
+  color: #11231e;
+  font: inherit;
+  line-height: 1.45;
+}
+.minuta-field-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.minuta-editor-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.minuta-editor-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.minuta-editor-section-head h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.minuta-editor-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.minuta-editor-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #d6e1dc;
+  background: #ffffff;
+}
+.minuta-editor-item-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.minuta-editor-order {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #e6f2ed;
+  color: #0b5a47;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+.minuta-editor-val {
+  color: #0a5845;
+  font-weight: 750;
+}
+.minuta-editor-val.is-missing {
+  color: #9b510d;
+}
+.minuta-editor-controls {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.minuta-icon-btn {
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 8px;
+  border: 1px solid #cfdcd6;
+  background: #f7faf9;
+  color: #1c342d;
+  font-weight: 700;
+  cursor: pointer;
+}
+.minuta-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.minuta-icon-btn.is-danger {
+  color: #8f2323;
+  border-color: #e4c5c5;
+  background: #fff8f8;
+}
+.minuta-editor-context {
+  margin: 0;
+  font-size: 0.79rem;
+  color: #4f6660;
+  line-height: 1.4;
+}
+.minuta-inline-expl {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: #3b534c;
+}
+.minuta-inline-expl input {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid #cedbd5;
+  font: inherit;
+  font-size: 0.84rem;
+}
+
+/* Vista previa digital + Hoja Carta */
+.minuta-preview-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.minuta-preview-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.minuta-sheet-frame {
+  padding: 10px;
+  border-radius: 14px;
+  background: #e3ebe7;
+  border: 1px solid #cbd7d1;
+}
+
+.minuta-sheet {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 22px 20px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #111816;
+  border: 1px solid #cfd9d4;
+  box-shadow: 0 4px 16px rgba(10, 25, 20, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.minuta-sheet-header {
+  border-bottom: 2px solid #163029;
+  padding-bottom: 10px;
+}
+.minuta-sheet-brand {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #3f554f;
+  margin-bottom: 6px;
+}
+.minuta-sheet-title {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.25;
+  color: #0e1e1a;
+}
+
+.minuta-sheet-section-label {
+  display: block;
+  font-size: 0.73rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #2f554a;
+  margin-bottom: 6px;
+}
+
+.minuta-sheet-answer {
+  padding: 12px 14px;
+  border-left: 4px solid #0d6a54;
+  background: #f4faf7;
+  border-radius: 0 8px 8px 0;
+}
+.minuta-sheet-answer-text {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.48;
+  color: #10201c;
+  font-weight: 500;
+}
+.minuta-sheet-coverage-flag {
+  margin: 8px 0 0;
+  padding-top: 7px;
+  border-top: 1px dashed #bdd4ca;
+  font-size: 0.8rem;
+  color: #5c3a09;
+  line-height: 1.38;
+}
+
+.minuta-sheet-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.minuta-figure-card {
+  padding: 12px 13px;
+  border-radius: 8px;
+  border: 1px solid #cddad4;
+  background: #fbfdfc;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.minuta-figure-card.is-missing {
+  border-color: #d6a562;
+  background: #fffcf5;
+}
+.minuta-figure-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #203730;
+  line-height: 1.3;
+}
+.minuta-ref-sup {
+  margin-left: 3px;
+  font-size: 0.72em;
+  font-weight: 800;
+  color: #0d6a54;
+}
+.minuta-figure-value {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 850;
+  line-height: 1.15;
+  color: #0a4f3e;
+  letter-spacing: -0.02em;
+}
+.minuta-figure-value.is-missing {
+  font-size: 1.08rem;
+  color: #8f4b0c;
+}
+.minuta-figure-subvalue {
+  margin: 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #1d3c33;
+}
+.minuta-figure-expl {
+  margin: 0;
+  font-size: 0.83rem;
+  color: #243631;
+  line-height: 1.38;
+}
+.minuta-figure-base,
+.minuta-figure-missing-note {
+  margin: 2px 0 0;
+  font-size: 0.76rem;
+  color: #3b524b;
+  line-height: 1.35;
+}
+.minuta-figure-missing-note {
+  color: #7c4108;
+}
+.minuta-figure-context {
+  margin: auto 0 0;
+  padding-top: 6px;
+  border-top: 1px solid #e4ece8;
+  font-size: 0.73rem;
+  color: #546a64;
+  line-height: 1.3;
+}
+
+.minuta-sheet-example {
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid #c9d7d1;
+  background: #f9fbfa;
+}
+.minuta-example-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+.minuta-example-tag {
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #b8cbc3;
+  background: #ffffff;
+  color: #203c34;
+}
+.minuta-example-name {
+  margin: 4px 0 4px;
+  font-size: 0.96rem;
+  line-height: 1.3;
+}
+.minuta-example-meta {
+  margin: 0 0 8px;
+  font-size: 0.79rem;
+  color: #4b615b;
+}
+.minuta-example-nums {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.minuta-example-nums dt {
+  font-size: 0.72rem;
+  color: #556b65;
+}
+.minuta-example-nums dd {
+  margin: 2px 0 0;
+  font-size: 0.88rem;
+  font-weight: 750;
+  color: #11241f;
+}
+
+.minuta-sheet-footnotes {
+  border-top: 1px solid #cbd7d1;
+  padding-top: 10px;
+}
+.minuta-footnotes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: #2c403a;
+}
+.minuta-fn-num {
+  font-weight: 800;
+  color: #0d6a54;
+}
+.minuta-fn-link {
+  color: #0d6a54;
+  font-weight: 700;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+/* Contenedor de impresión oculto en pantalla */
+.minuta-print-root,
+.print-only-inline {
+  display: none;
+}
+
+@media (min-width: 720px) {
+  .aysen-header-tools {
+    width: auto;
+    align-items: flex-end;
+  }
+  .minuta-drawer-body {
+    padding: 20px 24px 36px;
+  }
+  .minuta-question-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .minuta-filters-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .minuta-filter-wide {
+    grid-column: 1 / -1;
+  }
+  .minuta-sheet {
+    padding: 28px 30px;
+  }
+  .minuta-sheet-grid.count-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .minuta-sheet-grid.count-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* ============================================================
+   IMPRESIÓN / GUARDAR COMO PDF · CARTA VERTICAL BLANCO Y NEGRO
+============================================================ */
+@page {
+  size: letter portrait;
+  margin: 13mm 14mm;
+}
+
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 11pt !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .skip-link,
+  .masthead,
+  .module-bar-wrap,
+  .footer,
+  .aysen-header,
+  .aysen-panel,
+  .no-print,
+  .minuta-backdrop,
+  .minuta-toast {
+    display: none !important;
+  }
+
+  main#contenido.wrap,
+  .aysen-page {
+    display: block !important;
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .minuta-print-root {
+    display: block !important;
+  }
+
+  .print-only-inline {
+    display: inline !important;
+  }
+
+  .minuta-sheet.is-print-only {
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    gap: 11px !important;
+  }
+
+  .minuta-sheet.is-print-only .minuta-sheet-header {
+    border-bottom: 2pt solid #000000 !important;
+    padding-bottom: 8px !important;
+  }
+
+  .minuta-sheet.is-print-only .minuta-sheet-brand,
+  .minuta-sheet.is-print-only .minuta-sheet-section-label,
+  .minuta-sheet.is-print-only .minuta-ref-sup,
+  .minuta-sheet.is-print-only .minuta-fn-num,
+  .minuta-sheet.is-print-only .minuta-figure-value,
+  .minuta-sheet.is-print-only .minuta-figure-label,
+  .minuta-sheet.is-print-only .minuta-figure-expl,
+  .minuta-sheet.is-print-only .minuta-figure-base,
+  .minuta-sheet.is-print-only .minuta-figure-context,
+  .minuta-sheet.is-print-only .minuta-figure-subvalue,
+  .minuta-sheet.is-print-only .minuta-figure-missing-note,
+  .minuta-sheet.is-print-only .minuta-sheet-title,
+  .minuta-sheet.is-print-only .minuta-sheet-answer-text,
+  .minuta-sheet.is-print-only .minuta-sheet-coverage-flag,
+  .minuta-sheet.is-print-only .minuta-footnotes-list,
+  .minuta-sheet.is-print-only .minuta-example-meta,
+  .minuta-sheet.is-print-only .minuta-example-nums dt,
+  .minuta-sheet.is-print-only .minuta-example-nums dd {
+    color: #000000 !important;
+  }
+
+  .minuta-sheet.is-print-only .minuta-sheet-answer {
+    background: #ffffff !important;
+    border: 1pt solid #000000 !important;
+    border-left: 3.5pt solid #000000 !important;
+    border-radius: 0 !important;
+    padding: 9px 11px !important;
+  }
+
+  .minuta-sheet.is-print-only .minuta-sheet-grid.count-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .minuta-sheet.is-print-only .minuta-sheet-grid.count-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .minuta-sheet.is-print-only .minuta-figure-card,
+  .minuta-sheet.is-print-only .minuta-sheet-example {
+    background: #ffffff !important;
+    border: 0.8pt solid #222222 !important;
+    border-radius: 0 !important;
+    padding: 9px 10px !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .minuta-sheet.is-print-only .minuta-sheet-footnotes {
+    border-top: 1pt solid #000000 !important;
+    padding-top: 8px !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .minuta-sheet.is-print-only .minuta-fn-print-url {
+    font-size: 7.5pt !important;
+    word-break: break-all;
+  }
+}

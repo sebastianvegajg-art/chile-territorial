@@ -23,6 +23,22 @@ import type {
 } from './services/aysenPilotoService'
 import { importSinimFile, normalizeSinimErrors, sinimTemplateUrl } from './services/sinimService'
 import type { SinimErrorFila } from './services/sinimService'
+import { MiMinutaPanel, MinutaSheet } from './minuta/MiMinutaPanel'
+import type { MinutaModalMode } from './minuta/MiMinutaPanel'
+import {
+  buildSugerenciasGestionObra,
+  cifraFromInstitucionPresupuesto,
+  cifraFromPreguntaArrastre,
+  cifraFromResumenArrastre,
+  cifraFromResumenEconomia,
+  cifraFromResumenInversion,
+  cifrasFromEconomiaView,
+  generarRespuestaCotidiana,
+  loadMinutaDraft,
+  obraFromProyecto,
+  saveMinutaDraft,
+} from './minuta/minutaModel'
+import type { MinutaCifra, MinutaDraft, MinutaObraEjemplo } from './minuta/minutaModel'
 
 type TabId = 'resumen' | 'economia' | 'presupuestos' | 'proyectos'
 type EconomiaChartView = 'crecimiento' | 'participacion' | 'actividades'
@@ -693,10 +709,51 @@ function ParticipacionChart({
 }
 
 /* ============================================================
+   BOTÓN DISCRETO · AGREGAR A MINUTA
+============================================================ */
+
+function AddToMinutaButton({
+  saved,
+  onClick,
+  label = 'Agregar a minuta',
+  savedLabel = 'En minuta',
+}: {
+  saved: boolean
+  onClick: () => void
+  label?: string
+  savedLabel?: string
+}) {
+  return (
+    <button
+      type="button"
+      className={`minuta-add-btn${saved ? ' is-saved' : ''}`}
+      aria-pressed={saved}
+      onClick={onClick}
+    >
+      <span aria-hidden="true">{saved ? '✓' : '+'}</span> {saved ? savedLabel : label}
+    </button>
+  )
+}
+
+/* ============================================================
    TARJETA DE INSTITUCIÓN · PESTAÑA PRESUPUESTOS
 ============================================================ */
 
-function InstitucionPresupuestoCard({ inst }: { inst: InstitucionPresupuesto }) {
+function InstitucionPresupuestoCard({
+  inst,
+  anio,
+  mesCorteNombre,
+  enCurso,
+  isSaved,
+  onToggleMinuta,
+}: {
+  inst: InstitucionPresupuesto
+  anio: number
+  mesCorteNombre?: string | null
+  enCurso?: boolean
+  isSaved: boolean
+  onToggleMinuta: (cifra: MinutaCifra) => void
+}) {
   const radioPhrase =
     inst.frase_radial ||
     (inst.gasto_corriente_pct !== null
@@ -846,7 +903,21 @@ function InstitucionPresupuestoCard({ inst }: { inst: InstitucionPresupuesto }) 
         </details>
       )}
 
-      {/* Desplegable Ver fuente */}
+      {/* Acción discreta para guardar en Mi minuta + Desplegable Ver fuente */}
+      <div className="aysen-card-actions is-subtle-row">
+        <AddToMinutaButton
+          saved={isSaved}
+          onClick={() =>
+            onToggleMinuta(
+              cifraFromInstitucionPresupuesto(inst, anio, {
+                mesCorteNombre,
+                enCurso,
+                modo: 'gasto_corriente_pct',
+              }),
+            )
+          }
+        />
+      </div>
       <SourceDetailsBlock fuente={inst.fuente} summaryLabel="Ver fuente" />
     </article>
   )
@@ -860,10 +931,18 @@ function ProyectoFicha({
   proyecto,
   anio,
   onBack,
+  isObraSaved,
+  isPagoSaved,
+  onToggleObraEjemplo,
+  onTogglePagoCifra,
 }: {
   proyecto: ProyectoObra
   anio: number
   onBack: () => void
+  isObraSaved: boolean
+  isPagoSaved: boolean
+  onToggleObraEjemplo: (obra: MinutaObraEjemplo) => void
+  onTogglePagoCifra: (cifra: MinutaCifra) => void
 }) {
   const radioOneLiner =
     proyecto.frase_radial ||
@@ -888,6 +967,24 @@ function ProyectoFicha({
           {proyecto.codigo_contrato && <span className="mono">Contrato {proyecto.codigo_contrato}</span>}
         </div>
         <h3 id="ficha-proyecto-titulo">{proyecto.nombre}</h3>
+        <div className="aysen-card-actions is-subtle-row">
+          <AddToMinutaButton
+            saved={isObraSaved}
+            label="Usar como obra de ejemplo"
+            savedLabel="Obra en minuta"
+            onClick={() => onToggleObraEjemplo(obraFromProyecto(proyecto, anio))}
+          />
+          <AddToMinutaButton
+            saved={isPagoSaved}
+            label={`Agregar pago ${anio} a minuta`}
+            savedLabel="Pago en minuta"
+            onClick={() => {
+              const sug = buildSugerenciasGestionObra(proyecto, anio)
+              const pagoCifra = sug.cifras[1] ?? sug.cifras[0]
+              if (pagoCifra) onTogglePagoCifra(pagoCifra)
+            }}
+          />
+        </div>
       </div>
 
       <blockquote className="aysen-radio-quote">
@@ -1027,6 +1124,85 @@ export function PoliticalView() {
   const [searchInput, setSearchInput] = useState<string>('')
   const [appliedSearch, setAppliedSearch] = useState<string>('')
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+
+  // Estado persistente unificado de «Mi minuta»
+  const [minutaDraft, setMinutaDraft] = useState<MinutaDraft>(() => loadMinutaDraft())
+  const [minutaOpen, setMinutaOpen] = useState<boolean>(false)
+  const [minutaMode, setMinutaMode] = useState<MinutaModalMode>('crear')
+  const [minutaToast, setMinutaToast] = useState<string>('')
+
+  useEffect(() => {
+    saveMinutaDraft(minutaDraft)
+  }, [minutaDraft])
+
+  useEffect(() => {
+    if (!minutaToast) return
+    const timer = window.setTimeout(() => setMinutaToast(''), 3600)
+    return () => window.clearTimeout(timer)
+  }, [minutaToast])
+
+  const openMinuta = useCallback((initialMode: MinutaModalMode) => {
+    setMinutaMode(initialMode)
+    setMinutaOpen(true)
+  }, [])
+
+  const isCifraInMinuta = useCallback(
+    (id: string) => minutaDraft.cifras.some(c => c.id === id),
+    [minutaDraft.cifras],
+  )
+
+  const handleToggleMinutaCifra = useCallback((cifra: MinutaCifra) => {
+    setMinutaDraft(prev => {
+      const exists = prev.cifras.some(c => c.id === cifra.id)
+      const nextCifras = exists
+        ? prev.cifras.filter(c => c.id !== cifra.id)
+        : [...prev.cifras, cifra]
+      const nextTitulo =
+        prev.titulo.trim() ||
+        (!exists ? `¿Qué muestran los datos oficiales sobre ${cifra.etiqueta.toLowerCase()}?` : '')
+      const base: MinutaDraft = {
+        ...prev,
+        titulo: nextTitulo,
+        cifras: nextCifras,
+        actualizadoEn: new Date().toISOString(),
+      }
+      const nextRespuesta =
+        base.respuestaEditadaManualmente && base.respuesta.trim()
+          ? base.respuesta
+          : generarRespuestaCotidiana(base)
+      setMinutaToast(
+        exists
+          ? `Se quitó «${cifra.etiqueta}» de Mi minuta.`
+          : `Guardado en Mi minuta (${nextCifras.length} ${nextCifras.length === 1 ? 'cifra' : 'cifras'}).`,
+      )
+      return { ...base, respuesta: nextRespuesta }
+    })
+  }, [])
+
+  const handleToggleMinutaObra = useCallback((obra: MinutaObraEjemplo) => {
+    setMinutaDraft(prev => {
+      const same = prev.obraEjemplo?.id === obra.id
+      const nextObra = same ? null : obra
+      const base: MinutaDraft = {
+        ...prev,
+        titulo: prev.titulo.trim() || (!same ? `¿Qué registra la obra «${obra.nombre}» en ${obra.periodo}?` : ''),
+        obraEjemplo: nextObra,
+        actualizadoEn: new Date().toISOString(),
+      }
+      const nextRespuesta =
+        base.respuestaEditadaManualmente && base.respuesta.trim()
+          ? base.respuesta
+          : generarRespuestaCotidiana(base)
+      setMinutaToast(
+        same
+          ? 'Se quitó la obra de ejemplo de Mi minuta.'
+          : `Obra de ejemplo guardada en Mi minuta.`,
+      )
+      return { ...base, respuesta: nextRespuesta }
+    })
+  }, [])
+
+  const minutaItemsCount = minutaDraft.cifras.length + (minutaDraft.obraEjemplo ? 1 : 0)
 
   // Estados de carga de cada endpoint
   const [resumenState, setResumenState] = useState<{
@@ -1334,43 +1510,65 @@ export function PoliticalView() {
             </p>
           </div>
 
-          {/* Barra de controles compartidos */}
-          <div className="aysen-controls" aria-label="Filtros globales del Observatorio de Aysén">
-            <label className="aysen-control-field" htmlFor={yearSelectId}>
-              <span>Año</span>
-              <select
-                id={yearSelectId}
-                value={anio}
-                onChange={event => {
-                  setAnio(Number(event.target.value))
-                  setSelectedProjectId(null)
-                }}
-              >
-                {ANIOS_AYSEN.map(y => (
-                  <option key={y} value={y}>
-                    {y}{y >= 2026 ? ' (en curso)' : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {showComunaSelector && (
-              <label className="aysen-control-field" htmlFor={comunaSelectId}>
-                <span>Comuna</span>
+          {/* Barra de controles compartidos + Mi minuta */}
+          <div className="aysen-header-tools">
+            <div className="aysen-controls" aria-label="Filtros globales del Observatorio de Aysén">
+              <label className="aysen-control-field" htmlFor={yearSelectId}>
+                <span>Año</span>
                 <select
-                  id={comunaSelectId}
-                  value={comunaSelectorValue}
-                  onChange={event => handleComunaChange(event.target.value)}
+                  id={yearSelectId}
+                  value={anio}
+                  onChange={event => {
+                    setAnio(Number(event.target.value))
+                    setSelectedProjectId(null)
+                  }}
                 >
-                  {activeTab === 'proyectos' && <option value="">Todas las comunas (10)</option>}
-                  {COMUNAS_AYSEN.map(c => (
-                    <option key={c.cut} value={c.cut}>
-                      {c.nombre} ({c.cut})
+                  {ANIOS_AYSEN.map(y => (
+                    <option key={y} value={y}>
+                      {y}{y >= 2026 ? ' (en curso)' : ''}
                     </option>
                   ))}
                 </select>
               </label>
-            )}
+
+              {showComunaSelector && (
+                <label className="aysen-control-field" htmlFor={comunaSelectId}>
+                  <span>Comuna</span>
+                  <select
+                    id={comunaSelectId}
+                    value={comunaSelectorValue}
+                    onChange={event => handleComunaChange(event.target.value)}
+                  >
+                    {activeTab === 'proyectos' && <option value="">Todas las comunas (10)</option>}
+                    {COMUNAS_AYSEN.map(c => (
+                      <option key={c.cut} value={c.cut}>
+                        {c.nombre} ({c.cut})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+
+            <div className="minuta-header-actions" aria-label="Preparar minuta técnica de una página">
+              <button
+                type="button"
+                className="minuta-trigger-primary"
+                onClick={() => openMinuta('crear')}
+              >
+                Crear minuta
+              </button>
+              <button
+                type="button"
+                className={`minuta-trigger-draft${minutaItemsCount > 0 ? ' has-items' : ''}`}
+                onClick={() => openMinuta(minutaItemsCount > 0 ? 'vista_previa' : 'crear')}
+              >
+                Mi minuta
+                <span className="minuta-count-badge" aria-label={`${minutaItemsCount} elementos guardados`}>
+                  {minutaItemsCount}
+                </span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1490,6 +1688,10 @@ export function PoliticalView() {
                     >
                       Ver en Economía <span aria-hidden="true">→</span>
                     </button>
+                    <AddToMinutaButton
+                      saved={isCifraInMinuta(`resumen-eco-${resumenState.data.anio}`)}
+                      onClick={() => handleToggleMinutaCifra(cifraFromResumenEconomia(resumenState.data!))}
+                    />
                     <SourceLink fuente={resumenState.data.evolucion_economica.fuente} />
                   </div>
                 </article>
@@ -1559,6 +1761,10 @@ export function PoliticalView() {
                     >
                       Ver en Presupuestos <span aria-hidden="true">→</span>
                     </button>
+                    <AddToMinutaButton
+                      saved={isCifraInMinuta(`resumen-inv-${resumenState.data.anio}-${resumenState.data.comuna_codigo || 'reg'}`)}
+                      onClick={() => handleToggleMinutaCifra(cifraFromResumenInversion(resumenState.data!))}
+                    />
                     <SourceLink fuente={resumenState.data.inversion_publica.fuente} />
                   </div>
                 </article>
@@ -1620,6 +1826,10 @@ export function PoliticalView() {
                     >
                       Ver en Proyectos <span aria-hidden="true">→</span>
                     </button>
+                    <AddToMinutaButton
+                      saved={isCifraInMinuta(`resumen-arrastre-${resumenState.data.anio}`)}
+                      onClick={() => handleToggleMinutaCifra(cifraFromResumenArrastre(resumenState.data!))}
+                    />
                     <SourceLink fuente={resumenState.data.arrastre.fuente} />
                   </div>
                 </article>
@@ -1705,6 +1915,15 @@ export function PoliticalView() {
                       Peso por actividad productiva
                     </button>
                   </div>
+                </div>
+
+                <div className="aysen-card-actions is-subtle-row">
+                  <AddToMinutaButton
+                    saved={isCifraInMinuta(cifrasFromEconomiaView(economiaState.data, ecoView, anio).id)}
+                    onClick={() =>
+                      handleToggleMinutaCifra(cifrasFromEconomiaView(economiaState.data!, ecoView, anio))
+                    }
+                  />
                 </div>
 
                 {ecoView === 'crecimiento' && (
@@ -2128,7 +2347,15 @@ export function PoliticalView() {
               ) : (
                 <div className="aysen-inst-grid">
                   {institucionesFiltradas.map(inst => (
-                    <InstitucionPresupuestoCard key={inst.id} inst={inst} />
+                    <InstitucionPresupuestoCard
+                      key={inst.id}
+                      inst={inst}
+                      anio={presupuestosState.data!.anio}
+                      mesCorteNombre={presupuestosState.data!.mes_corte_nombre}
+                      enCurso={presupuestosState.data!.en_curso}
+                      isSaved={isCifraInMinuta(`presup-${inst.id}-${presupuestosState.data!.anio}-corriente-pct`)}
+                      onToggleMinuta={handleToggleMinutaCifra}
+                    />
                   ))}
                 </div>
               )}
@@ -2317,7 +2544,31 @@ export function PoliticalView() {
                           {preg.proyectos_excluidos ? ` · ${preg.proyectos_excluidos} excluidas por falta de fecha` : ''}
                         </span>
                       )}
-                      <SourceLink fuente={preg.fuente} />
+                      <div className="aysen-card-actions">
+                        <AddToMinutaButton
+                          saved={isCifraInMinuta(
+                            cifraFromPreguntaArrastre(
+                              preg,
+                              anio,
+                              idx === 0 ? 'pagado' : 'comprometido',
+                              comunaProyectos ? `Comuna de ${getComunaNombre(comunaProyectos)}` : 'Región de Aysén',
+                              proyectosState.data!.en_curso,
+                            ).id,
+                          )}
+                          onClick={() =>
+                            handleToggleMinutaCifra(
+                              cifraFromPreguntaArrastre(
+                                preg,
+                                anio,
+                                idx === 0 ? 'pagado' : 'comprometido',
+                                comunaProyectos ? `Comuna de ${getComunaNombre(comunaProyectos)}` : 'Región de Aysén',
+                                proyectosState.data!.en_curso,
+                              ),
+                            )
+                          }
+                        />
+                        <SourceLink fuente={preg.fuente} />
+                      </div>
                     </div>
                   </article>
                 ))}
@@ -2329,6 +2580,10 @@ export function PoliticalView() {
                   proyecto={selectedProject}
                   anio={anio}
                   onBack={() => setSelectedProjectId(null)}
+                  isObraSaved={minutaDraft.obraEjemplo?.id === `obra-${selectedProject.id}-${anio}`}
+                  isPagoSaved={isCifraInMinuta(`wiz-obra-pagado-${selectedProject.id}-${anio}`)}
+                  onToggleObraEjemplo={handleToggleMinutaObra}
+                  onTogglePagoCifra={handleToggleMinutaCifra}
                 />
               ) : (
                 <section className="aysen-projects-list-wrap" aria-label="Listado de obras y contratos">
@@ -2419,6 +2674,36 @@ export function PoliticalView() {
           )}
         </section>
       )}
+      {/* Notificación breve al guardar desde tarjetas */}
+      {minutaToast && (
+        <div className="minuta-toast no-print" role="status" aria-live="polite">
+          <span>{minutaToast}</span>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => openMinuta('vista_previa')}
+          >
+            Abrir Mi minuta →
+          </button>
+        </div>
+      )}
+
+      {/* Panel interactivo de Mi minuta */}
+      <MiMinutaPanel
+        open={minutaOpen}
+        mode={minutaMode}
+        onModeChange={setMinutaMode}
+        onClose={() => setMinutaOpen(false)}
+        draft={minutaDraft}
+        onDraftChange={setMinutaDraft}
+        defaultAnio={anio}
+        defaultComuna={comunaPresupuesto}
+      />
+
+      {/* Hoja dedicada exclusiva para impresión / guardar como PDF (Carta vertical B&N) */}
+      <div className="minuta-print-root" aria-hidden="true">
+        <MinutaSheet draft={minutaDraft} isPrintOnly />
+      </div>
     </div>
   )
 }
