@@ -1,14 +1,22 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const funcDir = dirname(fileURLToPath(import.meta.url));
 
 let cachedSnapshot = null;
 function getSnapshot() {
   if (!cachedSnapshot) {
-    const raw = readFileSync(join(__dirname, "data", "snapshot-oficial.json"), "utf-8");
-    cachedSnapshot = JSON.parse(raw);
+    const candidates = [
+      join(process.cwd(), "netlify", "functions", "data", "snapshot-oficial.json"),
+      join(funcDir, "data", "snapshot-oficial.json"),
+      "/var/task/netlify/functions/data/snapshot-oficial.json",
+    ];
+    const found = candidates.find((p) => existsSync(p));
+    if (!found) {
+      throw new Error(`No se encontró snapshot-oficial.json en: ${candidates.join(", ")}`);
+    }
+    cachedSnapshot = JSON.parse(readFileSync(found, "utf-8"));
   }
   return cachedSnapshot;
 }
