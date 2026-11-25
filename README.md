@@ -4,9 +4,11 @@ Observatorio público de inteligencia económica, fiscal y territorial de Chile.
 
 La cobertura objetivo comprende 16 regiones y 346 comunas, con Aysén y sus 10 comunas como piloto. Las series comenzarán en 2013 según disponibilidad. El seguimiento presupuestario y de gestión abarcará 2025–2028 conforme se publiquen los cortes oficiales.
 
-## Primera versión funcional definida
+## Comparador de PIB
 
-Consultas de PIB anual real y nominal nacional y regional, comparación de las 16 regiones, crecimiento real, participación nominal y exportación CSV con procedencia. Aysén será la selección regional inicial. La incorporación de las 13 actividades económicas vendrá en una segunda entrega. Este repositorio contiene los cimientos documentales y la estructura de trabajo.
+El comparador reúne las series de PIB anual real y nominal del Banco Central de Chile para Chile y sus 16 regiones. Permite consultar niveles, crecimiento real, participación regional, series históricas y rankings, además de descargar CSV con el corte de origen. Aysén es la selección regional inicial. La cobertura por actividad económica se aborda en una etapa posterior.
+
+Consulta el [registro de integración](docs/AVANCE_FASE1.md) para reproducir la descarga, cargar PostgreSQL y ejecutar la aplicación local. La [auditoría de calidad](docs/CALIDAD_PIB.md) documenta cobertura, redondeo, revisiones y contrastes.
 
 ## Documentación
 
@@ -17,4 +19,4 @@ Consultas de PIB anual real y nominal nacional y regional, comparación de las 1
 
 `apps/` contiene API y web. `pipelines/`, `db/` y `data/` separan ingesta, esquema y almacenamiento local. `contracts/` y `tests/` reservan interfaces y verificación. `analytics/`, `research/`, `design/` e `infra/` reservan los demás componentes. Las carpetas vacías incluyen marcadores para conservarlas al versionar.
 
-En la fase de implementación se prepararán la configuración local y los comandos reproducibles. [.env.example](.env.example) documenta la configuración propuesta.
+[.env.example](.env.example) documenta las variables de configuración.

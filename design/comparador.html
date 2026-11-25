@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comparador regional · Prototipo</title>
+<style>
+  :root { color-scheme: light; color: #112b29; background: #f3f0e9; font: 100%/1.5 system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  main { width: min(1120px, 100%); margin: auto; padding: clamp(1rem, 3vw, 2rem); }
+  h1 { margin: .25rem 0 .5rem; font-size: clamp(2rem, 5vw, 3rem); line-height: 1.1; }
+  h2 { margin: 0 0 .75rem; }
+  p { margin: 0 0 1rem; }
+  .skip { position: absolute; left: 1rem; top: 1rem; transform: translateY(-200%); }
+  .skip:focus { transform: none; }
+  .grid { display: grid; grid-template-columns: minmax(250px, 290px) minmax(0, 1fr); gap: 1rem; align-items: start; }
+  .panel { padding: 1.25rem; border: 1px solid #becbc5; border-radius: .75rem; background: white; }
+  label { display: block; margin: .6rem 0 .25rem; }
+  select, input, button, .download { min-height: 44px; font: inherit; border-radius: .5rem; }
+  select, input { width: 100%; padding: .4rem; background: white; color: #112b29; border: 1px solid #647973; }
+  [type=checkbox] { min-height: auto; width: 1rem; height: 1rem; margin-right: .5rem; }
+  button, .download { display: inline-flex; align-items: center; background: #08785e; color: white; border: 1px solid #08785e; padding: .5rem .75rem; }
+  form button { margin-top: 1rem; }
+  a { color: #075e4c; }
+  :focus-visible { outline: 3px solid #1a5eb2; outline-offset: 3px; }
+  .subtle, figcaption { color: #485d57; }
+  .notice { border-left: .3rem solid #08785e; padding: .5rem .75rem; background: #e0eee7; }
+  .table-scroll { overflow-x: auto; padding: .2rem; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  caption, th { text-align: left; }
+  td, th { padding: .55rem; border-bottom: 1px solid #becbc5; }
+  figure { margin: 1rem 0; }
+  svg { width: 100%; height: auto; display: block; }
+  details { margin: 1rem 0 .5rem; }
+  summary { cursor: pointer; min-height: 44px; padding-top: .5rem; }
+  @media (max-width: 760px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<a class="skip" href="#resultados">Ir a resultados</a>
+<main>
+  <header>
+    <span>Chile Territorial</span>
+    <h1>Comparador regional</h1>
+    <p class="notice">Vista de prueba · cifras sintéticas · corte <strong>prueba-d01</strong></p>
+  </header>
+  <div class="grid">
+    <form class="panel" id="filtros">
+      <h2>Filtros</h2>
+      <label for="region">Región</label>
+      <select id="region" name="region"></select>
+      <label for="comparar">Comparar con</label>
+      <select id="comparar" name="comparar"></select>
+      <label><input type="checkbox" id="chile" checked>Incluir referencia Chile</label>
+      <p id="regla-chile" class="subtle" hidden>La participación se calcula para regiones.</p>
+      <label for="metrica">Medida</label>
+      <select id="metrica" name="metrica">
+        <option value="nominal">PIB nominal</option>
+        <option value="real">PIB real</option>
+        <option value="crecimiento">Crecimiento real</option>
+        <option value="participacion">Participación en el PIB nacional</option>
+      </select>
+      <label for="desde">Desde</label>
+      <select id="desde"><option selected>2023</option><option>2024</option><option>2025</option></select>
+      <label for="hasta">Hasta</label>
+      <select id="hasta"><option>2023</option><option>2024</option><option selected>2025</option></select>
+      <p role="alert" id="error"></p>
+      <button type="submit">Aplicar filtros</button>
+    </form>
+    <section id="resultados" class="panel" aria-labelledby="medida" tabindex="-1">
+      <h2 id="medida">PIB nominal</h2>
+      <p role="status" id="estado"></p>
+      <a class="download" id="csv" download="comparacion-prueba-d01.csv">Descargar CSV de prueba</a>
+      <figure aria-labelledby="leyenda">
+        <svg viewBox="0 0 600 210" aria-hidden="true" id="grafica"></svg>
+        <figcaption id="leyenda"></figcaption>
+      </figure>
+      <div class="table-scroll" role="region" aria-label="Tabla desplazable" tabindex="0">
+        <table>
+          <caption id="unidad"></caption>
+          <thead><tr><th scope="col">Año</th><th scope="col">Territorio</th><th scope="col">Valor</th><th scope="col">Estado</th><th scope="col">Fuente</th></tr></thead>
+          <tbody id="filas"></tbody>
+        </table>
+      </div>
+      <details id="origen">
+        <summary>Procedencia del ejemplo</summary>
+        <p>Escenario sintético diseñado para el prototipo. Incluye una ausencia y un cero informado para demostrar cómo aparecen en la interfaz.</p>
+      </details>
+    </section>
+  </div>
+</main>
+<script>
+  const regiones = [
+    ["01", "Tarapacá"], ["02", "Antofagasta"], ["03", "Atacama"], ["04", "Coquimbo"],
+    ["05", "Valparaíso"], ["06", "O’Higgins"], ["07", "Maule"], ["08", "Biobío"],
+    ["09", "La Araucanía"], ["10", "Los Lagos"], ["11", "Aysén"], ["12", "Magallanes"],
+    ["13", "Metropolitana de Santiago"], ["14", "Los Ríos"], ["15", "Arica y Parinacota"], ["16", "Ñuble"],
+  ];
+  const controles = Object.fromEntries(
+    ["region", "comparar", "chile", "metrica", "desde", "hasta", "error", "estado", "medida", "csv", "grafica", "leyenda", "unidad", "filas", "origen"]
+      .map(id => [id, document.getElementById(id)])
+  );
+  controles.comparar.add(new Option("Sin segunda región", ""));
+  for (const [codigo, nombre] of regiones) {
+    controles.region.add(new Option(nombre, codigo));
+    controles.comparar.add(new Option(nombre, codigo));
+  }
+  controles.region.value = "11";
+  controles.metrica.addEventListener("change", () => {
+    const participacion = controles.metrica.value === "participacion";
+    controles.chile.disabled = participacion;
+    document.getElementById("regla-chile").hidden = !participacion;
+  });
+
+  const formato = new Intl.NumberFormat("es-CL", {maximumFractionDigits: 2});
+  const nombres = new Map([...regiones, ["CL", "Chile"]]);
+  const colores = ["#08785e", "#2356a5", "#934b13"];
+  const trazos = ["", "8 4", "2 5"];
+  let descarga;
+
+  function valorPrueba(codigo, anio, metrica) {
+    if (codigo === "11" && anio === 2024) return null;
+    if (codigo === "11" && anio === 2025 && metrica === "crecimiento") return 0;
+    const base = codigo === "CL" ? 180 : Number(codigo) * 7 + 24;
+    const nivel = base + (anio - 2023) * 5;
+    switch (metrica) {
+      case "real": return nivel * 0.8;
+      case "crecimiento": return 500 / (nivel - 5);
+      case "participacion": return 100 * nivel / valorPrueba("CL", anio, "nominal");
+      default: return nivel;
+    }
+  }
+
+  function dibujar(anios, codigos, metrica) {
+    const valores = codigos.flatMap(codigo => anios.map(anio => valorPrueba(codigo, anio, metrica)));
+    const maximo = Math.max(1, ...valores.filter(valor => valor !== null));
+    const x = indice => 72 + indice * (508 / Math.max(1, anios.length - 1));
+    const y = valor => 164 - (valor / maximo) * 136;
+    const marcas = [0, maximo / 2, maximo].map(valor =>
+      `<line x1="64" x2="588" y1="${y(valor)}" y2="${y(valor)}" stroke="#becbc5"/><text x="58" y="${y(valor) + 4}" text-anchor="end" fill="#485d57">${formato.format(valor)}</text>`
+    );
+    const series = codigos.map((codigo, indice) => {
+      let anterior = null;
+      return anios.map((anio, posicion) => {
+        const valor = valorPrueba(codigo, anio, metrica);
+        if (valor === null) { anterior = null; return ""; }
+        const punto = [x(posicion), y(valor)];
+        const segmento = anterior
+          ? `<line x1="${anterior[0]}" y1="${anterior[1]}" x2="${punto[0]}" y2="${punto[1]}" stroke="${colores[indice]}" stroke-width="3" stroke-dasharray="${trazos[indice]}"/>`
+          : "";
+        anterior = punto;
+        return segmento + `<circle cx="${punto[0]}" cy="${punto[1]}" r="5" fill="${colores[indice]}"/>`;
+      }).join("");
+    });
+    const etiquetas = anios.map((anio, indice) =>
+      `<text x="${x(indice)}" y="195" text-anchor="middle" fill="#485d57">${anio}</text>`
+    );
+    controles.grafica.innerHTML = [...marcas, ...series, ...etiquetas].join("");
+    controles.leyenda.textContent = "Series: " + codigos.map(codigo => nombres.get(codigo)).join(" · ") + ". Valores detallados en la tabla.";
+  }
+
+  function actualizar() {
+    const desde = Number(controles.desde.value);
+    const hasta = Number(controles.hasta.value);
+    if (desde > hasta) {
+      controles.error.textContent = "El año inicial debe ser anterior o igual al final.";
+      controles.hasta.focus();
+      return;
+    }
+    controles.error.textContent = "";
+    const metrica = controles.metrica.value;
+    const codigos = [...new Set([controles.region.value, controles.comparar.value].filter(Boolean))];
+    if (metrica !== "participacion" && controles.chile.checked) codigos.push("CL");
+    const anios = Array.from({length: hasta - desde + 1}, (_, i) => desde + i);
+    const unidad = ["nominal", "real"].includes(metrica) ? "millones de CLP" : "%";
+    const registros = anios.flatMap(anio => [...codigos].sort().map(codigo => {
+      const valor = valorPrueba(codigo, anio, metrica);
+      return {anio, codigo, valor, estado: valor === null ? "Faltante" : "Prueba"};
+    }));
+    controles.medida.textContent = controles.metrica.selectedOptions[0].text;
+    controles.unidad.textContent = "Cifras sintéticas en " + unidad;
+    controles.estado.textContent = `${registros.length} observaciones en el corte de prueba.`;
+    const filas = registros.map(({anio, codigo, valor, estado}) => {
+      const fila = document.createElement("tr");
+      const celdas = [anio, nombres.get(codigo), valor === null ? "—" : formato.format(valor), estado];
+      for (const valor of celdas) fila.insertCell().textContent = valor;
+      const enlace = document.createElement("a");
+      enlace.href = "#origen";
+      enlace.textContent = "Procedencia";
+      enlace.setAttribute("aria-label", "Procedencia de " + nombres.get(codigo) + ", " + anio);
+      enlace.addEventListener("click", () => { controles.origen.open = true; });
+      fila.insertCell().append(enlace);
+      return fila;
+    });
+    controles.filas.replaceChildren(...filas);
+    dibujar(anios, codigos, metrica);
+    const csv = [
+      "anio,territorio,metrica,valor,estado,publicacion",
+      ...registros.map(({anio, codigo, valor, estado}) =>
+        [anio, codigo, metrica, valor === null ? "" : valor.toFixed(2), estado, "prueba-d01"].join(",")
+      ),
+    ].join("\r\n");
+    if (descarga) URL.revokeObjectURL(descarga);
+    descarga = URL.createObjectURL(new Blob([csv], {type: "text/csv;charset=utf-8"}));
+    controles.csv.href = descarga;
+  }
+  document.getElementById("filtros").addEventListener("submit", evento => {
+    evento.preventDefault();
+    actualizar();
+  });
+  actualizar();
+</script>
+</body>
+</html>

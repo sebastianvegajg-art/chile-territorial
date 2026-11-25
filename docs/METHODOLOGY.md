@@ -7,6 +7,8 @@ El nivel nominal se expresa a precios corrientes. El nivel real usa los volúmen
 | Indicador | Fórmula y condiciones |
 |---|---|
 | Crecimiento anual real | `100 × (PIB real[t] / PIB real[t−1] − 1)` para años consecutivos comparables. El primer año visible requiere un año previo oficial o queda sin cálculo |
+| Crecimiento real acumulado | `100 × (PIB real[t] / PIB real[base] − 1)` con el año inicial seleccionado como base y ambos niveles del mismo corte y referencia |
+| Índice histórico real | `100 × PIB real[t] / PIB real[base]` bajo las mismas condiciones. Un nivel positivo en el año base da un índice de 100 para ese año |
 | Participación regional | `100 × PIB nominal regional / PIB nominal nacional` en el mismo año, moneda y corte. Documentar diferencias de cobertura o partidas no regionalizadas |
 | Especialización | `(VA nominal actividad regional / VA nominal total regional) / (VA nominal actividad nacional / VA nominal total nacional)` con clasificación equivalente y VA de igual perímetro |
 | Inversión pública respecto del PIB | `100 × inversión anual devengada consolidada y territorializada / PIB regional nominal anual`. Mostrar el alcance exacto de inversión y el porcentaje no asignado |
