@@ -27,6 +27,16 @@ function formatExact(row?: Observation) {
   return `${negative ? '−' : ''}${formatted}${suffix}`
 }
 
+function formatReadable(row?: Observation) {
+  if (row?.valor == null) return row ? statusText[row.estado] : 'Sin dato'
+  const num = Number(row.valor)
+  if (!Number.isFinite(num)) return formatExact(row)
+  if (row.unidad === '%') {
+    return `${num.toLocaleString('es-CL', { minimumFractionDigits: 1, maximumFractionDigits: 2 })}%`
+  }
+  return num.toLocaleString('es-CL', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+}
+
 function niceStep(range: number, targetTicks = 4): number {
   if (!Number.isFinite(range) || range <= 0) return 1
   const rough = range / Math.max(1, targetTicks)
@@ -556,12 +566,17 @@ export function History({ series, years, label, unit }: { series: Series[]; year
                     />
                     <span>{territory.nombre}</span>
                   </span>
-                  <span className={`history-readout-value${missing ? ' is-missing' : ''}`}>
-                    {formatExact(row)}
+                  <span
+                    className={`history-readout-value${missing ? ' is-missing' : ''}`}
+                    title={missing ? undefined : `Valor exacto: ${formatExact(row)}`}
+                  >
+                    <span>
+                      {formatReadable(row)}
+                      {row?.estado === 'preliminar' && <span className="history-prelim"> (prelim.)</span>}
+                    </span>
                     {idxVal !== null && (
                       <span className="history-index-pill">índice {dec1.format(idxVal)}</span>
                     )}
-                    {row?.estado === 'preliminar' && <span className="history-prelim"> (prelim.)</span>}
                   </span>
                 </div>
               )
