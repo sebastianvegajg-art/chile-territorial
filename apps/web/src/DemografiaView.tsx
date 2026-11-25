@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
+import { InfoPopover } from './components/InfoPopover'
 import { ApiServiceError } from './services/bcchService'
 import {
   escapeCsvCell,
@@ -22,7 +23,7 @@ function fmtClp(value: number | null | undefined): string {
 
 function fmtMillionsClp(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return 'Sin dato'
-  return `MM$ ${num0.format(value)}`
+  return `$${num0.format(value)} millones`
 }
 
 function fmtPop(value: number | null | undefined): string {
@@ -218,11 +219,10 @@ export function DemografiaView() {
     <div className="fase2-page">
       <section className="intro pol-intro">
         <div>
-          <p className="eyebrow">Observatorio económico · BCCh-BDE + INE ({state.data?.total_series ?? 17} series oficiales)</p>
-          <h1>PIB per Cápita, Población INE y Convergencia</h1>
+          <p className="eyebrow">Economía y población · Banco Central + INE</p>
+          <h1>PIB por habitante y brechas entre regiones</h1>
           <p className="lede">
-            Cruce oficial entre Cuentas Nacionales Regionales del Banco Central de Chile y series poblacionales del INE
-            para las 16 regiones y el total nacional (2013–2025), junto a la evolución histórica de σ-convergencia.
+            Cuánto produce en promedio cada habitante en las 16 regiones de Chile (2013–2025) y si las diferencias territoriales se han acortado o ampliado.
           </p>
         </div>
         <div className="fase2-toolbar">
@@ -355,15 +355,18 @@ export function DemografiaView() {
                 </span>
               </div>
 
-              <div className="pol-kpi-card">
-                <span className="kpi-label">σ-convergencia · CV 16 regiones ({sigmaSelected?.anio ?? selectedYear})</span>
+              <div className="pol-kpi-card has-info-corner">
+                <InfoPopover label="Cómo se calcula la brecha entre regiones" title="Brecha territorial (σ-convergencia)">
+                  <p>Corresponde al coeficiente de variación (CV) del PIB por habitante entre las 16 regiones. Si baja con los años, las regiones se acercan entre sí (convergencia); si sube, la brecha se amplía.</p>
+                </InfoPopover>
+                <span className="kpi-label">Brecha entre regiones ({sigmaSelected?.anio ?? selectedYear})</span>
                 <strong className="pol-kpi-num">
                   {getCv(sigmaSelected) !== null ? `${num2.format(getCv(sigmaSelected)!)}%` : 'Sin dato'}
                 </strong>
                 <span className="kpi-meta">
                   {sigmaTrend
                     ? `${sigmaTrend.label} (${sigmaTrend.diffPp > 0 ? '+' : ''}${num2.format(sigmaTrend.diffPp)} pp en ${sigmaTrend.firstYear}–${sigmaTrend.lastYear})`
-                    : 'Coeficiente de variación interregional'}
+                    : 'Dispersión entre las 16 regiones'}
                 </span>
               </div>
             </div>
@@ -429,10 +432,10 @@ export function DemografiaView() {
                     <tr>
                       <th scope="col">Territorio</th>
                       <th scope="col" className="numeric">Población INE</th>
-                      <th scope="col" className="numeric">PIB {valuation} (MM$)</th>
-                      <th scope="col" className="numeric">PIB per cápita ($ CLP)</th>
-                      <th scope="col" className="numeric">Índice (Chile = 100)</th>
-                      <th scope="col">Series de origen</th>
+                      <th scope="col" className="numeric">PIB {valuation}</th>
+                      <th scope="col" className="numeric">PIB por habitante</th>
+                      <th scope="col" className="numeric">Relación vs Chile (100)</th>
+                      <th scope="col" className="numeric"><span className="sr-only">Fuente técnica</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -451,11 +454,15 @@ export function DemografiaView() {
                           <td className="numeric">
                             {getIndexChile(row) !== null ? num1.format(getIndexChile(row)!) : 'Sin dato'}
                           </td>
-                          <td className="mono">
-                            <div>{row.serie_poblacion || 'INE/BDE'}</div>
-                            <div className="subtle">
-                              {valuation === 'real' ? (row.serie_pib_real || '—') : (row.serie_pib_nominal || '—')}
-                            </div>
+                          <td className="numeric info-cell">
+                            <InfoPopover
+                              placement="inline"
+                              label={`Ver referencia oficial de ${row.nombre}`}
+                              title={`Series oficiales · ${row.nombre}`}
+                            >
+                              <p><strong>Población (INE):</strong> <code className="mono">{row.serie_poblacion || 'INE/BDE'}</code></p>
+                              <p><strong>PIB {valuation} (BCCh):</strong> <code className="mono">{valuation === 'real' ? (row.serie_pib_real || '—') : (row.serie_pib_nominal || '—')}</code></p>
+                            </InfoPopover>
                           </td>
                         </tr>
                       )
@@ -467,13 +474,9 @@ export function DemografiaView() {
 
             <footer className="source-footer" aria-label="Pie de fuente PIB per cápita">
               <div className="source-footer-row">
-                <span><strong>Fuente:</strong> BCCh-BDE + INE ({state.data.total_series} series)</span>
-                <span><strong>Endpoint:</strong> <code className="mono">{state.data.fuente_trazabilidad.endpoint || '/api/v1/demografia/poblacion'}</code></span>
-              </div>
-              <div className="source-footer-row">
+                <span><strong>Fuente:</strong> Banco Central de Chile + INE (Población)</span>
                 <span><strong>Actualizado:</strong> {fmtTimestamp(state.data.actualizado_en)}</span>
-                <span><strong>Extracción:</strong> {fmtTimestamp(state.data.extraido_en)}</span>
-                <span>Prohibida la imputación comunal: el PIB solo existe a escala nacional y regional.</span>
+                <span>El PIB oficial se mide solo a escala nacional y regional.</span>
               </div>
             </footer>
           </section>

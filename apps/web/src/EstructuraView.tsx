@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
+import { InfoPopover } from './components/InfoPopover'
 import { ApiServiceError } from './services/bcchService'
 import {
   REGIONES_CHILE,
@@ -13,6 +14,7 @@ import type {
 } from './services/fase2Service'
 
 const num0 = new Intl.NumberFormat('es-CL', { maximumFractionDigits: 0 })
+const num1 = new Intl.NumberFormat('es-CL', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 const num2 = new Intl.NumberFormat('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const num3 = new Intl.NumberFormat('es-CL', { minimumFractionDigits: 3, maximumFractionDigits: 3 })
 
@@ -20,7 +22,14 @@ const ANIOS_DEFECTO = Array.from({ length: 13 }, (_, i) => 2013 + i)
 
 function fmtMillions(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return 'Sin dato'
-  return `MM$ ${num0.format(value)}`
+  return `$${num0.format(value)} millones`
+}
+
+function fmtRelativeChile(lq: number | null | undefined): string {
+  if (lq === null || lq === undefined || !Number.isFinite(lq)) return 'Sin dato'
+  if (lq >= 1.05) return `${num1.format(lq)} veces Chile`
+  if (lq >= 0.95) return 'Similar a Chile'
+  return `${num1.format(lq)}× Chile`
 }
 
 function fmtPct(value: number | null | undefined, signed = false): string {
@@ -219,14 +228,16 @@ export function EstructuraView() {
     <div className="fase2-page">
       <section className="intro pol-intro">
         <div>
-          <p className="eyebrow">Observatorio económico · BCCh-BDE · {state.data?.total_series ?? 416} series oficiales</p>
-          <h1>Estructura Productiva y Especialización · 16 Regiones</h1>
+          <p className="eyebrow">Economía regional · Banco Central de Chile</p>
+          <h1>Estructura Productiva · 16 Regiones</h1>
           <p className="lede">
-            Composición nominal por actividad económica (13 ramas Cuentas Nacionales), Cociente de Localización (LQ),
-            concentración HHI, diversificación productiva e Índice de Krugman para las 16 regiones de Chile.
+            Qué produce cada región, qué sectores pesan más que en el resto de Chile y cuán diversificada es su economía.
           </p>
         </div>
         <div className="fase2-toolbar">
+          <a className="secondary-btn link-button" href="#empleo">
+            Ver empleo INE por sector →
+          </a>
           <button
             type="button"
             className="primary"
@@ -249,7 +260,7 @@ export function EstructuraView() {
       <section className="panel fase2-controls-bar" aria-label="Filtros de estructura productiva">
         <div className="fase2-controls-grid">
           <label className="field" htmlFor={regionSelectId}>
-            Región (01 a 16)
+            Región
             <select
               id={regionSelectId}
               value={selectedRegion}
@@ -257,14 +268,14 @@ export function EstructuraView() {
             >
               {regionOptions.map(reg => (
                 <option key={reg.codigo} value={reg.codigo}>
-                  {reg.codigo} · {reg.nombre}
+                  {reg.nombre}
                 </option>
               ))}
             </select>
           </label>
 
           <label className="field" htmlFor={yearSelectId}>
-            Año del corte (2013–2025)
+            Año
             <select
               id={yearSelectId}
               value={selectedYear}
@@ -336,60 +347,87 @@ export function EstructuraView() {
         <>
           {/* KPIs de la región seleccionada */}
           {activeRegion && (
-            <section className="panel axis-main" aria-labelledby="est-kpi-titulo">
+            <section className="panel axis-main has-info-corner" aria-labelledby="est-kpi-titulo">
+              <InfoPopover label="Detalle metodológico del cálculo sectorial" title="Nota metodológica">
+                <p>
+                  Los pesos sectoriales se calculan sobre el <strong>Valor Agregado Bruto (VAB)</strong> a precios corrientes de cada año (los volúmenes reales encadenados no suman exactamente 100%).
+                </p>
+                {activeRegion.diferencia_impuestos_millones !== null && (
+                  <p>
+                    Diferencia entre PIB y VAB en {activeRegion.anio}: <strong>{fmtMillions(activeRegion.diferencia_impuestos_millones)}</strong> (impuestos netos de subvenciones).
+                  </p>
+                )}
+                <p>Fuente: Banco Central de Chile · Cuentas Nacionales Regionales ({state.data.total_series} series oficiales).</p>
+              </InfoPopover>
+
               <div className="axis-main-top">
                 <div>
-                  <p className="eyebrow">Región {activeRegion.codigo} · Corte {activeRegion.anio}</p>
+                  <p className="eyebrow">Perfil productivo · Año {activeRegion.anio}</p>
                   <h2 id="est-kpi-titulo">{activeRegion.nombre}</h2>
                   <p className="subtle">
-                    Indicadores calculados sobre Valor Agregado Bruto (VAB) a precios corrientes (valoración nominal); los volúmenes reales encadenados no son aditivos.
+                    Resumen simple de tamaño económico, diversidad y actividad más característica de la región.
                   </p>
                 </div>
                 <span className="status-badge is-official">
-                  {actividadesOrdenadas.length} actividades
+                  {actividadesOrdenadas.length} sectores
                 </span>
               </div>
 
               <div className="fase2-kpi-grid is-five">
-                <div className="pol-kpi-card is-highlight">
-                  <span className="kpi-label">VAB nominal total ({activeRegion.anio})</span>
+                <div className="pol-kpi-card is-highlight has-info-corner">
+                  <InfoPopover label="Qué es la producción total (VAB)" title="Valor Agregado Bruto (VAB)">
+                    <p>Suma de todo el valor producido por los sectores económicos de la región en el año, a precios corrientes.</p>
+                  </InfoPopover>
+                  <span className="kpi-label">Producción total ({activeRegion.anio})</span>
                   <strong className="pol-kpi-num">{fmtMillions(activeRegion.vab_nominal_millones)}</strong>
                   <span className="kpi-meta">
                     {activeRegion.pib_nominal_millones !== null
-                      ? `PIB nominal: ${fmtMillions(activeRegion.pib_nominal_millones)}`
-                      : 'Suma de actividades nominales'}
+                      ? `PIB regional: ${fmtMillions(activeRegion.pib_nominal_millones)}`
+                      : 'Suma de sectores regionales'}
                   </span>
                 </div>
 
-                <div className="pol-kpi-card">
-                  <span className="kpi-label">Concentración HHI (0–10.000)</span>
+                <div className="pol-kpi-card has-info-corner">
+                  <InfoPopover label="Qué mide la concentración productiva (HHI)" title="Índice de concentración (HHI)">
+                    <p>Mide si la economía depende de pocos sectores (escala de 0 a 10.000). Menos de 1.500 indica diversificación; sobre 2.500 indica alta concentración.</p>
+                  </InfoPopover>
+                  <span className="kpi-label">Concentración productiva</span>
                   <strong className="pol-kpi-num">
                     {activeRegion.hhi !== null ? num0.format(activeRegion.hhi) : 'Sin dato'}
                   </strong>
                   <span className="kpi-meta">{describeHhi(activeRegion.hhi)}</span>
                 </div>
 
-                <div className="pol-kpi-card">
-                  <span className="kpi-label">Diversificación (1 − HHI/10.000)</span>
+                <div className="pol-kpi-card has-info-corner">
+                  <InfoPopover label="Qué mide la diversificación económica" title="Índice de diversificación">
+                    <p>Equivale a 1 − (HHI / 10.000). Mientras más cerca de 100%, más repartida está la producción entre distintos sectores.</p>
+                  </InfoPopover>
+                  <span className="kpi-label">Diversificación</span>
                   <strong className="pol-kpi-num">
-                    {activeRegion.diversificacion !== null ? num3.format(activeRegion.diversificacion) : 'Sin dato'}
+                    {activeRegion.diversificacion !== null ? `${num1.format(activeRegion.diversificacion * 100)}%` : 'Sin dato'}
                   </strong>
-                  <span className="kpi-meta">Más cercano a 1,000 = mayor diversidad</span>
+                  <span className="kpi-meta">Más alto = menos dependencia de un solo sector</span>
                 </div>
 
-                <div className="pol-kpi-card">
-                  <span className="kpi-label">Índice de Krugman (0–1)</span>
+                <div className="pol-kpi-card has-info-corner">
+                  <InfoPopover label="Cómo se compara con el perfil nacional (Krugman)" title="Distancia frente a Chile (Krugman)">
+                    <p>Índice de Krugman (de 0 a 1). Un valor cercano a 0 significa una estructura muy parecida al promedio nacional; más alto indica una economía regional muy distinta.</p>
+                  </InfoPopover>
+                  <span className="kpi-label">Diferencia frente a Chile</span>
                   <strong className="pol-kpi-num">
-                    {activeRegion.krugman !== null ? num3.format(activeRegion.krugman) : 'Sin dato'}
+                    {activeRegion.krugman !== null ? num2.format(activeRegion.krugman) : 'Sin dato'}
                   </strong>
-                  <span className="kpi-meta">Disimilitud estructural vs promedio nacional</span>
+                  <span className="kpi-meta">Escala 0 (igual al país) a 1 (muy distinta)</span>
                 </div>
 
-                <div className="pol-kpi-card is-highlight">
-                  <span className="kpi-label">Sector más especializado (mayor LQ)</span>
+                <div className="pol-kpi-card is-highlight has-info-corner">
+                  <InfoPopover label="Qué significa sector más característico (LQ)" title="Especialización relativa (LQ)">
+                    <p>Compara el peso de cada sector en la región contra su peso en Chile (Cociente de Localización). Sobre 1,0 veces indica que pesa más aquí que en el promedio nacional.</p>
+                  </InfoPopover>
+                  <span className="kpi-label">Sector más característico</span>
                   <strong className="pol-kpi-num">
                     {activeRegion.sector_mas_especializado
-                      ? `LQ ${num2.format(activeRegion.sector_mas_especializado.lq)}`
+                      ? fmtRelativeChile(activeRegion.sector_mas_especializado.lq)
                       : 'Sin dato'}
                   </strong>
                   <span className="kpi-meta">
@@ -397,26 +435,25 @@ export function EstructuraView() {
                   </span>
                 </div>
               </div>
-
-              {activeRegion.diferencia_impuestos_millones !== null && (
-                <p className="subtle">
-                  Nota contable: diferencia <code className="mono">PIB − VAB</code> en {activeRegion.anio} ={' '}
-                  <strong>{fmtMillions(activeRegion.diferencia_impuestos_millones)}</strong> (impuestos sobre los productos netos de subvenciones).
-                </p>
-              )}
             </section>
           )}
 
           {/* Detalle de las 13 actividades económicas de la región seleccionada */}
           {viewMode === 'regional' && activeRegion && (
-            <section className="panel axis-main" aria-labelledby="est-actividades-titulo">
+            <section className="panel axis-main has-info-corner" aria-labelledby="est-actividades-titulo">
+              <InfoPopover label="Fuente oficial y trazabilidad técnica" title="Fuente y actualización">
+                <p><strong>Organismo:</strong> {state.data.fuente_trazabilidad.institucion}</p>
+                <p><strong>Actualizado:</strong> {fmtTimestamp(state.data.actualizado_en)}</p>
+                <p><strong>Cobertura:</strong> {state.data.total_series} series oficiales de Cuentas Nacionales Regionales (los códigos exactos están en cada fila y en la descarga CSV).</p>
+              </InfoPopover>
+
               <div className="axis-main-top">
                 <div>
                   <h2 id="est-actividades-titulo">
-                    Las {actividadesOrdenadas.length} actividades económicas · {activeRegion.nombre} ({activeRegion.anio})
+                    Actividades económicas · {activeRegion.nombre} ({activeRegion.anio})
                   </h2>
                   <p className="subtle">
-                    Se resaltan en verde los sectores con especialización relativa superior al perfil nacional (<strong>LQ &gt; 1,00</strong>).
+                    En verde aparecen los sectores que pesan más en esta región que en el promedio de Chile.
                   </p>
                 </div>
                 <div className="view-switch compact-switch" role="group" aria-label="Formato de actividades">
@@ -434,8 +471,8 @@ export function EstructuraView() {
 
               {(activityFormat === 'both' || activityFormat === 'bars') && (
                 <div className="visual-card">
-                  <h4>Participación nominal (%) y Cociente de Localización (LQ)</h4>
-                  <ul className="activity-chart" aria-label={`Participación nominal y LQ por actividad en ${activeRegion.nombre}`}>
+                  <h4>Peso de cada actividad en la economía regional (%)</h4>
+                  <ul className="activity-chart" aria-label={`Participación por actividad en ${activeRegion.nombre}`}>
                     {actividadesOrdenadas.map(act => {
                       const widthPct = act.participacion_nominal_pct !== null && maxSharePct > 0
                         ? Math.max(1.5, (act.participacion_nominal_pct / maxSharePct) * 100)
@@ -450,7 +487,7 @@ export function EstructuraView() {
                             <span>{act.nombre}</span>
                             {isSpec && (
                               <span className="mini-tag is-admin">
-                                LQ {act.lq !== null ? num2.format(act.lq) : '> 1'}
+                                {fmtRelativeChile(act.lq)}
                               </span>
                             )}
                           </div>
@@ -462,7 +499,7 @@ export function EstructuraView() {
                           <div className="activity-values">
                             <strong>{fmtPct(act.participacion_nominal_pct)}</strong>
                             <span className="subtle">
-                              {fmtMillions(act.valor_nominal_millones)} · Real: {fmtPct(act.crecimiento_real_pct, true)}
+                              {fmtMillions(act.valor_nominal_millones)} · Cambio real: {fmtPct(act.crecimiento_real_pct, true)}
                             </span>
                           </div>
                         </li>
@@ -473,19 +510,19 @@ export function EstructuraView() {
               )}
 
               {(activityFormat === 'both' || activityFormat === 'table') && (
-                <div className="table-scroll" tabIndex={0} role="region" aria-label={`Tabla completa de actividades económicas de ${activeRegion.nombre}`}>
+                <div className="table-scroll" tabIndex={0} role="region" aria-label={`Tabla de actividades económicas de ${activeRegion.nombre}`}>
                   <table className="pol-table">
                     <caption className="sr-only">
-                      Estructura sectorial de {activeRegion.nombre} en {activeRegion.anio}: valor nominal, participación, LQ, crecimiento real y códigos BDE
+                      Estructura sectorial de {activeRegion.nombre} en {activeRegion.anio}: valor anual, peso en la región, comparación con Chile y cambio real
                     </caption>
                     <thead>
                       <tr>
                         <th scope="col">Actividad económica</th>
-                        <th scope="col" className="numeric">Valor nominal (MM$)</th>
-                        <th scope="col" className="numeric">Participación (%)</th>
-                        <th scope="col" className="numeric">LQ</th>
-                        <th scope="col" className="numeric">Crec. real anual (%)</th>
-                        <th scope="col">Serie BDE (Nominal / Real)</th>
+                        <th scope="col" className="numeric">Valor anual</th>
+                        <th scope="col" className="numeric">Peso regional</th>
+                        <th scope="col" className="numeric">Peso vs Chile</th>
+                        <th scope="col" className="numeric">Cambio real anual</th>
+                        <th scope="col" className="numeric"><span className="sr-only">Fuente técnica</span></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -503,12 +540,19 @@ export function EstructuraView() {
                             <td className="numeric">{fmtMillions(act.valor_nominal_millones)}</td>
                             <td className="numeric">{fmtPct(act.participacion_nominal_pct)}</td>
                             <td className="numeric">
-                              <strong>{act.lq !== null ? num2.format(act.lq) : 'Sin dato'}</strong>
+                              <strong>{fmtRelativeChile(act.lq)}</strong>
                             </td>
                             <td className="numeric">{fmtPct(act.crecimiento_real_pct, true)}</td>
-                            <td className="mono">
-                              <div>{act.serie_nominal || '—'}</div>
-                              {act.serie_real && <div className="subtle">{act.serie_real}</div>}
+                            <td className="numeric info-cell">
+                              <InfoPopover
+                                placement="inline"
+                                label={`Ver serie oficial Banco Central de ${act.nombre}`}
+                                title={`Referencia oficial · ${act.nombre}`}
+                              >
+                                <p><strong>Cociente de Localización (LQ):</strong> {act.lq !== null ? num2.format(act.lq) : 'Sin dato'}</p>
+                                {act.serie_nominal && <p><strong>Serie nominal BDE:</strong> <code className="mono">{act.serie_nominal}</code></p>}
+                                {act.serie_real && <p><strong>Serie real BDE:</strong> <code className="mono">{act.serie_real}</code></p>}
+                              </InfoPopover>
                             </td>
                           </tr>
                         )
@@ -518,15 +562,10 @@ export function EstructuraView() {
                 </div>
               )}
 
-              <footer className="source-footer" aria-label="Trazabilidad de fuente sectorial">
+              <footer className="source-footer" aria-label="Fuente oficial">
                 <div className="source-footer-row">
-                  <span><strong>Fuente:</strong> BCCh-BDE · {state.data.total_series} series ({state.data.fuente_trazabilidad.institucion})</span>
-                  <span><strong>Endpoint:</strong> <code className="mono">{state.data.fuente_trazabilidad.endpoint || `/api/v1/sectorial/regiones?anio=${selectedYear}`}</code></span>
-                </div>
-                <div className="source-footer-row">
+                  <span><strong>Fuente:</strong> Banco Central de Chile · Cuentas Nacionales Regionales</span>
                   <span><strong>Actualizado:</strong> {fmtTimestamp(state.data.actualizado_en)}</span>
-                  <span><strong>Extracción:</strong> {fmtTimestamp(state.data.extraido_en)}</span>
-                  <span>Perímetro nominal (VAB a precios corrientes) · LQ y Krugman respecto al agregado regionalizado de 16 regiones.</span>
                 </div>
               </footer>
             </section>
@@ -617,11 +656,11 @@ export function EstructuraView() {
                   <tr>
                     <th scope="col">#</th>
                     <th scope="col">Región</th>
-                    <th scope="col" className="numeric">VAB nominal (MM$)</th>
-                    <th scope="col" className="numeric">HHI (0–10.000)</th>
+                    <th scope="col" className="numeric">Producción total</th>
+                    <th scope="col" className="numeric">Concentración</th>
                     <th scope="col" className="numeric">Diversificación</th>
-                    <th scope="col" className="numeric">Krugman (0–1)</th>
-                    <th scope="col">Mayor especialización (LQ)</th>
+                    <th scope="col" className="numeric">Diferencia vs Chile</th>
+                    <th scope="col">Sector más característico</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -642,11 +681,11 @@ export function EstructuraView() {
                       </th>
                       <td className="numeric">{fmtMillions(item.vab_nominal_millones)}</td>
                       <td className="numeric">{item.hhi !== null ? num0.format(item.hhi) : 'Sin dato'}</td>
-                      <td className="numeric">{item.diversificacion !== null ? num3.format(item.diversificacion) : 'Sin dato'}</td>
-                      <td className="numeric">{item.krugman !== null ? num3.format(item.krugman) : 'Sin dato'}</td>
+                      <td className="numeric">{item.diversificacion !== null ? `${num1.format(item.diversificacion * 100)}%` : 'Sin dato'}</td>
+                      <td className="numeric">{item.krugman !== null ? num2.format(item.krugman) : 'Sin dato'}</td>
                       <td>
                         {item.sector_mas_especializado
-                          ? `${item.sector_mas_especializado}${item.max_lq !== null ? ` (LQ ${num2.format(item.max_lq)})` : ''}`
+                          ? `${item.sector_mas_especializado}${item.max_lq !== null ? ` (${fmtRelativeChile(item.max_lq)})` : ''}`
                           : '—'}
                       </td>
                     </tr>
@@ -657,9 +696,8 @@ export function EstructuraView() {
 
             <footer className="source-footer" aria-label="Pie de fuente comparativa 16 regiones">
               <div className="source-footer-row">
-                <span><strong>Fuente:</strong> BCCh-BDE · {state.data.total_series} series</span>
-                <span><strong>Corte:</strong> {state.data.fuente_trazabilidad.corte || `Año ${state.data.anio}`}</span>
-                <span><strong>Extracción:</strong> {fmtTimestamp(state.data.extraido_en)}</span>
+                <span><strong>Fuente:</strong> Banco Central de Chile · Cuentas Nacionales Regionales</span>
+                <span><strong>Año:</strong> {state.data.anio}</span>
               </div>
             </footer>
           </section>
