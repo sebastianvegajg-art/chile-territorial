@@ -7007,6 +7007,7 @@ button.proy-billboard.is-selected {
   :root[data-lens="politica"] .aysen-tab[aria-selected="true"] {
     background: #0c2d4d;
     border-color: #0c2d4d;
+    color: #ffffff;
     box-shadow: 0 2px 8px rgba(12, 45, 77, 0.24);
   }
   :root[data-lens="politica"] .aysen-hint-bar {
@@ -7061,6 +7062,7 @@ button.proy-billboard.is-selected {
   :root[data-lens="politica"] .aysen-view-pills button[aria-pressed="true"] {
     background: #0c2d4d;
     border-color: #0c2d4d;
+    color: #ffffff;
     box-shadow: 0 2px 6px rgba(12, 45, 77, 0.22);
   }
   :root[data-lens="politica"] .aysen-activity-fill {
