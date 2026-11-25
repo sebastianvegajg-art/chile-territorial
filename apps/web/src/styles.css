@@ -5018,8 +5018,9 @@ button.proy-billboard.is-selected {
 
 .minuta-sheet-kicker {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 6px 10px;
 }
 .minuta-sheet-logo {
   display: block;
@@ -5167,18 +5168,23 @@ button.proy-billboard.is-selected {
 }
 
 .pg-preset-btn {
-  padding: 6px 12px;
+  padding: 7px 13px;
   border-radius: 999px;
-  border: 1px solid #c7d6d0;
-  background: #f5f9f7;
-  color: #21443c;
-  font-size: .8rem;
-  font-weight: 600;
+  border: 1.5px solid #b9cdc5;
+  background-color: #f2f7f5;
+  color: #163a32;
+  font-size: .81rem;
+  font-weight: 700;
   cursor: pointer;
-  transition: background-color .15s ease, border-color .15s ease;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.pg-preset-btn:hover {
+  background-color: #e4f1ec;
+  border-color: #0d6b58;
+  color: #0b332a;
 }
 .pg-preset-btn.is-active {
-  background: #0d6b58;
+  background-color: #0d6b58;
   border-color: #0d6b58;
   color: #ffffff;
 }

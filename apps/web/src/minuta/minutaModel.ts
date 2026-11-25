@@ -354,18 +354,15 @@ export function generarRespuestaCotidiana(draft: MinutaDraft): string {
   if (draft.preguntaId === 'por_gobierno_vivienda' || ctx || glosa) {
     const disponiblesPg = cifras.filter(c => c.disponible)
     const primera = disponiblesPg[0]
-    const segunda = disponiblesPg[1]
     const partePresup = primera
-      ? `${primera.etiqueta}: ${primera.valorTexto}${primera.subvalor ? ` (${primera.subvalor})` : ''}${segunda ? `; ${segunda.etiqueta.toLowerCase()}: ${segunda.valorTexto}` : ''}.`
+      ? `En Vivienda (Partida 18 MINVU), el gasto varió ${primera.valorTexto}${primera.subvalor ? ` (${primera.subvalor})` : ''}.`
       : ctx
-        ? `Comparación nacional de ${ctx.tema} entre ${ctx.administraciones} (${ctx.periodos}).`
+        ? `Comparación nacional de Vivienda (${ctx.administraciones}).`
         : ''
     const parteGlosa = glosa
-      ? ` En reglas de uso (${glosa.anioA} vs ${glosa.anioB}), «${glosa.titulo}»: ${glosa.diferenciaPractica.split('.')[0]}.`
+      ? ` En reglas (${glosa.anioA} vs ${glosa.anioB}), ${glosa.trazaNumeracion} modificó condiciones de uso.`
       : ''
-    const cierre = partePresup && parteGlosa
-      ? ' Regla legal y ejecución presupuestaria se informan por separado.'
-      : ''
+    const cierre = partePresup && parteGlosa ? ' Regla y ejecución se informan por separado.' : ''
     return `${partePresup}${parteGlosa}${cierre}`.trim()
   }
 
