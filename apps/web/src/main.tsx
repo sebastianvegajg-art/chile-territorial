@@ -14,6 +14,10 @@ import { PorGobiernoView } from './PorGobiernoView'
 import './styles.css'
 
 type Page = 'comparar' | 'politica' | 'por-gobierno' | 'empleo' | 'estructura' | 'demografia' | 'laboratorio' | 'metodologia'
+type Lens = 'contable' | 'politica'
+
+const CONTABLE_PAGES = new Set<Page>(['comparar', 'estructura', 'empleo', 'demografia'])
+const POLITICA_PAGES = new Set<Page>(['politica', 'por-gobierno', 'laboratorio'])
 
 const POLITICAL_HASHES = new Set([
   '#politica',
@@ -95,6 +99,7 @@ function formatReleaseDate(value?: string) {
 
 function App() {
   const [page, setPage] = useState<Page>(() => resolvePage(location.hash))
+  const [lastLens, setLastLens] = useState<Lens>(() => (POLITICA_PAGES.has(resolvePage(location.hash)) ? 'politica' : 'contable'))
   const [mode, setMode] = useState<'official' | 'demo'>(demoDefault ? 'demo' : 'official')
   const [territories, setTerritories] = useState<Territory[]>([])
   const [releases, setReleases] = useState<Publication[]>([])
@@ -201,17 +206,42 @@ function App() {
     return () => request.abort()
   }, [mode])
 
+  const activeLens: Lens = POLITICA_PAGES.has(page)
+    ? 'politica'
+    : CONTABLE_PAGES.has(page)
+      ? 'contable'
+      : lastLens
+
+  useEffect(() => {
+    if (POLITICA_PAGES.has(page)) setLastLens('politica')
+    else if (CONTABLE_PAGES.has(page)) setLastLens('contable')
+  }, [page])
+
+  useEffect(() => {
+    document.documentElement.dataset.lens = activeLens
+  }, [activeLens])
+
   useEffect(() => {
     const sync = () => setPage(current => resolvePage(location.hash, current))
     window.addEventListener('hashchange', sync)
     return () => window.removeEventListener('hashchange', sync)
   }, [])
 
-  function selectReadingMode(next: 'comparar' | 'politica') {
-    if (next === 'politica' && standalone) return
-    setPage(next)
-    const targetHash = next === 'politica' ? '#politica' : '#comparar'
-    if (location.hash !== targetHash) location.hash = targetHash
+  function selectReadingMode(next: Lens) {
+    setLastLens(next)
+    if (next === 'politica') {
+      const targetPage: Page = standalone ? 'por-gobierno' : 'politica'
+      const targetHash = standalone ? '#por-gobierno' : '#politica'
+      if (!POLITICA_PAGES.has(page)) {
+        setPage(targetPage)
+        if (location.hash !== targetHash) location.hash = targetHash
+      }
+      return
+    }
+    if (!CONTABLE_PAGES.has(page)) {
+      setPage('comparar')
+      if (location.hash !== '#comparar') location.hash = '#comparar'
+    }
   }
 
   useEffect(() => {
@@ -324,7 +354,11 @@ function App() {
       <a className="skip-link" href="#contenido">Ir al contenido principal</a>
       <header className="masthead">
         <div className="masthead-inner wrap">
-          <a className="brand brand-confiasur" href="#politica" aria-label="CONFIASUR Consultores · Observatorio Territorial">
+          <a
+            className="brand brand-confiasur"
+            href={activeLens === 'politica' ? (standalone ? '#por-gobierno' : '#politica') : '#comparar'}
+            aria-label="CONFIASUR Consultores · Observatorio Territorial"
+          >
             <img
               src="/brand/confiasur-logo-light.png"
               alt="CONFIASUR Consultores"
@@ -336,27 +370,29 @@ function App() {
             <span className="brand-observatory">Observatorio <strong>Territorial</strong></span>
           </a>
           <div className="masthead-right">
-            <div className="mode-switch" role="group" aria-label="Modo de lectura">
+            <div className="mode-switch" role="group" aria-label="Lente de análisis">
               <button
                 type="button"
-                aria-pressed={page === 'comparar'}
-                onClick={() => selectReadingMode('comparar')}
+                className="lens-btn is-contable"
+                aria-pressed={activeLens === 'contable'}
+                title="Enfoque estadístico y numérico: PIB, estructura productiva, empleo INE y PIB per cápita"
+                onClick={() => selectReadingMode('contable')}
               >
+                <span className="lens-dot is-contable" aria-hidden="true" />
                 Vista Contable
               </button>
               <button
                 type="button"
-                aria-pressed={page === 'politica'}
-                disabled={standalone}
-                title={standalone ? 'Requiere conexión a las APIs en vivo (no disponible en copia HTML autónoma)' : 'Lectura política y estratégica de la Región de Aysén'}
+                className="lens-btn is-politica"
+                aria-pressed={activeLens === 'politica'}
+                title="Enfoque político y de gestión pública: Aysén, comparación por gobierno y dossiers"
                 onClick={() => selectReadingMode('politica')}
               >
+                <span className="lens-dot is-politica" aria-hidden="true" />
                 Vista Política
               </button>
             </div>
             <nav aria-label="Principal">
-              <a href="#comparar" aria-current={page === 'comparar' ? 'page' : undefined}>Comparador</a>
-              <a href="#por-gobierno" aria-current={page === 'por-gobierno' ? 'page' : undefined}>Por gobierno</a>
               <a href="#metodologia" aria-current={page === 'metodologia' ? 'page' : undefined}>Metodología</a>
             </nav>
           </div>
@@ -365,15 +401,28 @@ function App() {
 
       {!standalone && (
         <div className="module-bar-wrap">
-          <nav className="module-bar wrap" aria-label="Módulos del observatorio">
-            <a href="#comparar" aria-current={page === 'comparar' ? 'page' : undefined}>Comparador PIB</a>
-            <a href="#politica" aria-current={page === 'politica' ? 'page' : undefined}>Vista Política Aysén</a>
-            <a href="#por-gobierno" aria-current={page === 'por-gobierno' ? 'page' : undefined}>Por gobierno</a>
-            <a href="#empleo" aria-current={page === 'empleo' ? 'page' : undefined}>Empleo INE</a>
-            <a href="#estructura" aria-current={page === 'estructura' ? 'page' : undefined}>Estructura 16 Regiones</a>
-            <a href="#demografia" aria-current={page === 'demografia' ? 'page' : undefined}>PIB per Cápita</a>
-            <a href="#laboratorio" aria-current={page === 'laboratorio' ? 'page' : undefined}>Laboratorio y Dossiers</a>
-            <a href="#metodologia" aria-current={page === 'metodologia' ? 'page' : undefined}>Metodología y fuentes</a>
+          <nav
+            className="module-bar wrap"
+            aria-label={activeLens === 'politica' ? 'Módulos de Vista Política' : 'Módulos de Vista Contable'}
+          >
+            <span className={`module-bar-lens is-${activeLens}`}>
+              <span className={`lens-dot is-${activeLens}`} aria-hidden="true" />
+              {activeLens === 'politica' ? 'Lente político' : 'Lente contable'}
+            </span>
+            {activeLens === 'contable' ? (
+              <>
+                <a href="#comparar" aria-current={page === 'comparar' ? 'page' : undefined}>Comparador PIB</a>
+                <a href="#estructura" aria-current={page === 'estructura' ? 'page' : undefined}>Estructura 16 Regiones</a>
+                <a href="#empleo" aria-current={page === 'empleo' ? 'page' : undefined}>Empleo INE</a>
+                <a href="#demografia" aria-current={page === 'demografia' ? 'page' : undefined}>PIB per Cápita</a>
+              </>
+            ) : (
+              <>
+                <a href="#politica" aria-current={page === 'politica' ? 'page' : undefined}>Aysén: Gestión y Obras</a>
+                <a href="#por-gobierno" aria-current={page === 'por-gobierno' ? 'page' : undefined}>Por gobierno</a>
+                <a href="#laboratorio" aria-current={page === 'laboratorio' ? 'page' : undefined}>Laboratorio y Dossiers</a>
+              </>
+            )}
           </nav>
         </div>
       )}

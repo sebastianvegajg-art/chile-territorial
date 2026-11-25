@@ -35,7 +35,7 @@ h1, h2, h3, p { margin-top: 0; }
 .skip-link { position: fixed; z-index: 10; left: 1rem; top: -5rem; padding: .75rem 1rem; background: #fff; border: 2px solid var(--accent); border-radius: 8px; font-weight: 700; }
 .skip-link:focus { top: 1rem; }
 
-.masthead { background: var(--dark); color: #fff; border-bottom: 1px solid #0d4f41; }
+.masthead { background: var(--dark); color: #fff; border-bottom: 1px solid #0d4f41; transition: background-color .22s ease, border-color .22s ease; }
 .masthead-inner { min-height: 70px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .6rem 1.25rem; padding-block: .4rem; }
 .masthead-right { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem 1.5rem; min-width: 0; }
 .brand { display: inline-flex; gap: .65rem; align-items: center; color: #fff; text-decoration: none; font-size: 1.18rem; letter-spacing: -.025em; white-space: nowrap; }
@@ -50,10 +50,15 @@ h1, h2, h3, p { margin-top: 0; }
   background: #0c4b3d;
   border: 1px solid #1e6b58;
   max-width: 100%;
+  transition: background-color .22s ease, border-color .22s ease;
 }
 .mode-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .42rem;
   min-height: 36px;
-  padding: .3rem .78rem;
+  padding: .3rem .84rem;
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
@@ -63,6 +68,19 @@ h1, h2, h3, p { margin-top: 0; }
   white-space: nowrap;
   transition: background-color .14s ease, color .14s ease, border-color .14s ease;
 }
+.lens-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: none;
+}
+.lens-dot.is-contable {
+  background: #27c08f;
+}
+.lens-dot.is-politica {
+  background: #4ca8f5;
+}
 .mode-switch button:hover:not(:disabled) { color: #fff; background: #145c4b; }
 .mode-switch button[aria-pressed="true"],
 .mode-switch button[aria-pressed="true"]:hover:not(:disabled) {
@@ -70,6 +88,12 @@ h1, h2, h3, p { margin-top: 0; }
   color: var(--dark);
   border-color: #d6ebe3;
   box-shadow: 0 1px 3px #031d1740;
+}
+.mode-switch button[aria-pressed="true"] .lens-dot.is-contable {
+  background: #08785e;
+}
+.mode-switch button[aria-pressed="true"] .lens-dot.is-politica {
+  background: #145a94;
 }
 .mode-switch button:disabled {
   opacity: .55;
@@ -82,10 +106,11 @@ h1, h2, h3, p { margin-top: 0; }
 .masthead nav a[aria-current] { color: #fff; border-color: #76dcb9; font-weight: 650; }
 .masthead :focus-visible { outline-color: #9de3ce; }
 
-/* Barra modular de navegación (solo modo conectado, oculta en standalone) */
+/* Barra modular de navegación (separada por lente: Contable verde vs Política azul) */
 .module-bar-wrap {
   background: #eaf1ec;
   border-bottom: 1px solid #cedbd2;
+  transition: background-color .22s ease, border-color .22s ease;
 }
 .module-bar {
   display: flex;
@@ -94,6 +119,36 @@ h1, h2, h3, p { margin-top: 0; }
   gap: .35rem .5rem;
   padding-block: .48rem;
   min-width: 0;
+}
+.module-bar-lens {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .24rem .68rem;
+  margin-right: .3rem;
+  border-radius: 999px;
+  font-size: .73rem;
+  font-weight: 750;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  user-select: none;
+}
+.module-bar-lens.is-contable {
+  background: #d8ebe2;
+  color: #094a3b;
+  border: 1px solid #b8d7c9;
+}
+.module-bar-lens.is-contable .lens-dot.is-contable {
+  background: #08785e;
+}
+.module-bar-lens.is-politica {
+  background: #d6e7f7;
+  color: #0e3d6b;
+  border: 1px solid #afcce8;
+}
+.module-bar-lens.is-politica .lens-dot.is-politica {
+  background: #145a94;
 }
 .module-bar a {
   display: inline-flex;
@@ -6409,7 +6464,9 @@ button.proy-billboard.is-selected {
 }
 .info-pop-body code {
   font-size: .74rem;
-  word-break: break-all;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
   background: #f2f7f5;
   padding: 1px 4px;
   border-radius: 4px;
@@ -6847,5 +6904,415 @@ button.proy-billboard.is-selected {
   }
   .emp-traj-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* ============================================================
+   TEMA AZUL INSTITUCIONAL · LENTE «VISTA POLÍTICA» (data-lens="politica")
+   Diferencia visualmente la lectura política y de gestión pública (AZUL)
+   de la lectura estadística y contable (VERDE). Mantiene @media print B&N.
+============================================================ */
+@media screen {
+  :root[data-lens="politica"] {
+    --ink: #10263b;
+    --muted: #4a6178;
+    --accent: #145a94;
+    --accent-dark: #0e4370;
+    --dark: #0c2d4d;
+    --line: #cddbeb;
+    --surface: #f4f8fc;
+  }
+
+  :root[data-lens="politica"] :focus-visible {
+    outline-color: #145a94;
+  }
+
+  :root[data-lens="politica"] .masthead {
+    background: #0c2d4d;
+    border-bottom-color: #164473;
+  }
+  :root[data-lens="politica"] .brand:hover {
+    color: #e6f2fc;
+  }
+  :root[data-lens="politica"] .brand-observatory {
+    color: #cde1f5;
+  }
+  :root[data-lens="politica"] .mode-switch {
+    background: #123b66;
+    border-color: #296299;
+  }
+  :root[data-lens="politica"] .mode-switch button {
+    color: #cde1f5;
+  }
+  :root[data-lens="politica"] .mode-switch button:hover:not(:disabled) {
+    color: #ffffff;
+    background: #1a4f85;
+  }
+  :root[data-lens="politica"] .mode-switch button[aria-pressed="true"],
+  :root[data-lens="politica"] .mode-switch button[aria-pressed="true"]:hover:not(:disabled) {
+    background: #ffffff;
+    color: #0c2d4d;
+    border-color: #d2e4f6;
+    box-shadow: 0 1px 3px rgba(6, 26, 46, 0.28);
+  }
+  :root[data-lens="politica"] .masthead nav a {
+    color: #cde1f5;
+  }
+  :root[data-lens="politica"] .masthead nav a:hover {
+    color: #ffffff;
+  }
+  :root[data-lens="politica"] .masthead nav a[aria-current] {
+    color: #ffffff;
+    border-color: #79c2fb;
+  }
+  :root[data-lens="politica"] .masthead :focus-visible {
+    outline-color: #8ccbfa;
+  }
+
+  :root[data-lens="politica"] .module-bar-wrap {
+    background: #e7f0fa;
+    border-bottom-color: #c2d7ee;
+  }
+  :root[data-lens="politica"] .module-bar a {
+    color: #0c2d4d;
+  }
+  :root[data-lens="politica"] .module-bar a:hover {
+    background: #d5e5f6;
+    border-color: #a5c5e6;
+    color: #0c2d4d;
+  }
+  :root[data-lens="politica"] .module-bar a[aria-current="page"] {
+    background: #0c2d4d;
+    border-color: #0c2d4d;
+    color: #ffffff;
+  }
+
+  /* Observatorio de Aysén (#politica) en paleta azul */
+  :root[data-lens="politica"] .aysen-page {
+    --ay-surface-tint: #f4f8fc;
+    --ay-border: rgba(16, 42, 68, 0.12);
+    --ay-border-strong: rgba(16, 42, 68, 0.22);
+    --ay-shadow-sm: 0 1px 2px rgba(12, 45, 77, 0.06), 0 4px 12px rgba(12, 45, 77, 0.05);
+    --ay-shadow-md: 0 4px 16px rgba(12, 45, 77, 0.09);
+    --ay-invest: #145a94;
+    --ay-current: #4a78a8;
+  }
+  :root[data-lens="politica"] .aysen-tablist {
+    background: #e8f1fa;
+    border-color: rgba(12, 45, 77, 0.08);
+  }
+  :root[data-lens="politica"] .aysen-tab {
+    color: #36506b;
+  }
+  :root[data-lens="politica"] .aysen-tab[aria-selected="true"] {
+    background: #0c2d4d;
+    border-color: #0c2d4d;
+    box-shadow: 0 2px 8px rgba(12, 45, 77, 0.24);
+  }
+  :root[data-lens="politica"] .aysen-hint-bar {
+    background: #ebf3fb;
+    border-color: rgba(20, 90, 148, 0.16);
+    color: #25415e;
+  }
+  :root[data-lens="politica"] .aysen-banner.is-info {
+    background: #e8f2fc;
+    border-color: #b4d2ee;
+    color: #0e385c;
+  }
+  :root[data-lens="politica"] .aysen-territory-tag {
+    background: #e6f0fa;
+    color: #0c2d4d;
+  }
+  :root[data-lens="politica"] .aysen-territory-tag.is-regional {
+    background: #dcebf9;
+    color: #0c3d69;
+  }
+  :root[data-lens="politica"] .aysen-radio-quote {
+    border-left-color: #145a94;
+    background: #f2f7fc;
+    color: #122a42;
+  }
+  :root[data-lens="politica"] .aysen-callout {
+    background: #ebf3fb;
+    border-color: #bdd6ee;
+  }
+  :root[data-lens="politica"] .aysen-meta-details {
+    background: #f4f8fc;
+    border-color: rgba(16, 42, 68, 0.09);
+  }
+  :root[data-lens="politica"] .aysen-meta-details summary {
+    color: #2d4c6b;
+  }
+  :root[data-lens="politica"] .aysen-budget-trio > div.is-primary {
+    background: #e3effa;
+  }
+  :root[data-lens="politica"] .aysen-source-link:hover,
+  :root[data-lens="politica"] .aysen-source-btn:hover {
+    background: #e3effa;
+    border-color: #145a94;
+  }
+  :root[data-lens="politica"] .aysen-cta-btn:hover {
+    box-shadow: 0 3px 10px rgba(20, 90, 148, 0.24);
+  }
+  :root[data-lens="politica"] .aysen-view-pills button:hover:not([aria-pressed="true"]) {
+    background: #e4effa;
+    border-color: #145a94;
+  }
+  :root[data-lens="politica"] .aysen-view-pills button[aria-pressed="true"] {
+    background: #0c2d4d;
+    border-color: #0c2d4d;
+    box-shadow: 0 2px 6px rgba(12, 45, 77, 0.22);
+  }
+  :root[data-lens="politica"] .aysen-activity-fill {
+    background: linear-gradient(90deg, rgba(20, 90, 148, 0.45) 0%, #145a94 100%);
+  }
+  :root[data-lens="politica"] .aysen-swatch.is-aysen-capsule {
+    background: linear-gradient(180deg, #1a6cb0 0%, rgba(26, 108, 176, 0.25) 100%);
+    border-color: #145a94;
+  }
+
+  /* Pestaña «Por gobierno» (#por-gobierno) en paleta azul */
+  :root[data-lens="politica"] .pg-title,
+  :root[data-lens="politica"] .pg-card-title,
+  :root[data-lens="politica"] .pg-chart-head h3,
+  :root[data-lens="politica"] .pg-glosa-header-main h3,
+  :root[data-lens="politica"] .pg-details-body h4,
+  :root[data-lens="politica"] .pg-kpi-pair strong,
+  :root[data-lens="politica"] .pg-selected-year-nums strong {
+    color: #0c2d4d;
+  }
+  :root[data-lens="politica"] .pg-lede,
+  :root[data-lens="politica"] .pg-field span,
+  :root[data-lens="politica"] .pg-kpi-foot,
+  :root[data-lens="politica"] .pg-glosa-sub {
+    color: #425c75;
+  }
+  :root[data-lens="politica"] .pg-field select {
+    border-color: #bfd3e8;
+    color: #0f2942;
+  }
+  :root[data-lens="politica"] .pg-toast {
+    background: #0c2d4d;
+    box-shadow: 0 10px 26px rgba(12, 45, 77, 0.24);
+  }
+  :root[data-lens="politica"] .pg-toast .text-button {
+    color: #8fd0ff;
+  }
+  :root[data-lens="politica"] .pg-preset-btn {
+    border-color: #b7cee6;
+    background-color: #f1f6fc;
+    color: #13385e;
+  }
+  :root[data-lens="politica"] .pg-preset-btn:hover {
+    background-color: #e1eef9;
+    border-color: #145a94;
+    color: #0c2d4d;
+  }
+  :root[data-lens="politica"] .pg-preset-btn.is-active {
+    background-color: #145a94;
+    border-color: #145a94;
+    color: #ffffff;
+  }
+  :root[data-lens="politica"] .pg-query-tab {
+    border-color: #c5d7ea;
+    background: #f8fbfe;
+    color: #122d47;
+  }
+  :root[data-lens="politica"] .pg-query-tab:hover {
+    border-color: #145a94;
+    background: #eef5fc;
+  }
+  :root[data-lens="politica"] .pg-query-tab.is-active {
+    border-color: #145a94;
+    background: #e6f1fb;
+    box-shadow: 0 0 0 2px rgba(20, 90, 148, 0.15);
+  }
+  :root[data-lens="politica"] .pg-query-step,
+  :root[data-lens="politica"] .pg-plain-grid dt,
+  :root[data-lens="politica"] .pg-parallel-year,
+  :root[data-lens="politica"] .pg-glosa-chevron,
+  :root[data-lens="politica"] .pg-details-summary,
+  :root[data-lens="politica"] .pg-source-links a,
+  :root[data-lens="politica"] .pg-parallel-foot a,
+  :root[data-lens="politica"] .pg-proyecto-vs-ley-note a {
+    color: #145a94;
+  }
+  :root[data-lens="politica"] .pg-query-tab strong {
+    color: #0c2d4d;
+  }
+  :root[data-lens="politica"] .pg-method-banner:not(.is-equivalente) {
+    background: #f1f7fc;
+    border-color: #c2d7ec;
+    border-left-color: #145a94;
+    color: #143657;
+  }
+  :root[data-lens="politica"] .pg-unit-toggle {
+    background: #eaf1f8;
+    border-color: #c8daec;
+  }
+  :root[data-lens="politica"] .pg-unit-toggle button {
+    color: #294663;
+  }
+  :root[data-lens="politica"] .pg-unit-toggle button.is-active {
+    background: #145a94;
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(20, 90, 148, 0.24);
+  }
+  :root[data-lens="politica"] .pg-method-strip > div,
+  :root[data-lens="politica"] .pg-kpi-pair > div,
+  :root[data-lens="politica"] .pg-selected-year-box,
+  :root[data-lens="politica"] .pg-mini-card,
+  :root[data-lens="politica"] .pg-plain-grid > div,
+  :root[data-lens="politica"] .pg-parallel-col,
+  :root[data-lens="politica"] .pg-proyecto-vs-ley-note {
+    background: #f5f9fd;
+    border-color: #d3e2f0;
+  }
+  :root[data-lens="politica"] .pg-kpi-card {
+    border-top-color: #7ea1c4;
+  }
+  :root[data-lens="politica"] .pg-kpi-card.is-primary {
+    border-top-color: #145a94;
+    background: linear-gradient(180deg, #eff6fc 0%, #ffffff 34%);
+  }
+  :root[data-lens="politica"] .pg-add-minuta-btn {
+    border-color: #145a94;
+    color: #145a94;
+  }
+  :root[data-lens="politica"] .pg-add-minuta-btn:hover {
+    background: #e7f2fc;
+  }
+  :root[data-lens="politica"] .pg-add-minuta-btn.is-saved {
+    background: #145a94;
+    color: #ffffff;
+  }
+  :root[data-lens="politica"] .pg-conclusion-box {
+    border-left-color: #145a94;
+  }
+  :root[data-lens="politica"] .pg-dot.is-ini { background: #bccde0; }
+  :root[data-lens="politica"] .pg-dot.is-vig { background: #6b95bd; }
+  :root[data-lens="politica"] .pg-dot.is-ejec { background: #145a94; }
+  :root[data-lens="politica"] .pg-year-pill:not(.is-shared) {
+    border-color: #c1d5e8;
+    background: #f5f9fd;
+    color: #1c3d5e;
+  }
+  :root[data-lens="politica"] .pg-year-pill.is-active {
+    background: #145a94;
+    border-color: #145a94;
+    color: #ffffff;
+  }
+  :root[data-lens="politica"] .pg-filter-pill {
+    border-color: #bfd3e7;
+    background: #f3f8fc;
+    color: #1a3d5e;
+  }
+  :root[data-lens="politica"] .pg-filter-pill.is-active {
+    background: #145a94;
+    border-color: #145a94;
+    color: #ffffff;
+  }
+  :root[data-lens="politica"] .pg-glosa-card.is-open {
+    border-color: #145a94;
+    box-shadow: 0 6px 20px rgba(20, 90, 148, 0.1);
+  }
+  :root[data-lens="politica"] .pg-glosa-header-btn:hover {
+    background: #f4f9fd;
+  }
+  :root[data-lens="politica"] .pg-tipo-badge {
+    background: #e6f1fb;
+    color: #124b7c;
+  }
+
+  /* Mi minuta, Laboratorio, Popovers (i) y badges en lente político */
+  :root[data-lens="politica"] .minuta-trigger-primary {
+    border-color: #145a94;
+    background: #145a94;
+  }
+  :root[data-lens="politica"] .minuta-trigger-primary:hover {
+    background: #0e4370;
+  }
+  :root[data-lens="politica"] .minuta-trigger-draft {
+    border-color: #bdd2e6;
+    color: #112d4a;
+  }
+  :root[data-lens="politica"] .minuta-trigger-draft:hover,
+  :root[data-lens="politica"] .minuta-trigger-draft.has-items {
+    border-color: #145a94;
+    background: #eaf3fc;
+  }
+  :root[data-lens="politica"] .minuta-count-badge {
+    background: #145a94;
+  }
+  :root[data-lens="politica"] .minuta-trigger-draft:not(.has-items) .minuta-count-badge {
+    background: #d5e4f2;
+    color: #2f4e6d;
+  }
+  :root[data-lens="politica"] .minuta-add-btn:hover {
+    border-color: #145a94;
+    background: #eaf3fc;
+    color: #0e4370;
+  }
+  :root[data-lens="politica"] .minuta-add-btn.is-saved {
+    border-color: #145a94;
+    background: #e1effb;
+    color: #0c3d69;
+  }
+  :root[data-lens="politica"] .minuta-mode-tab.is-active {
+    border-color: #145a94;
+    background: #145a94;
+    color: #ffffff;
+  }
+  :root[data-lens="politica"] .minuta-question-option small,
+  :root[data-lens="politica"] .minuta-suggestion-val:not(.is-missing),
+  :root[data-lens="politica"] .minuta-glosa-col strong,
+  :root[data-lens="politica"] .info-pop-body a {
+    color: #145a94;
+  }
+  :root[data-lens="politica"] .minuta-question-option:hover,
+  :root[data-lens="politica"] .minuta-question-option.is-selected,
+  :root[data-lens="politica"] .minuta-suggestion-item.is-checked {
+    border-color: #145a94;
+    background: #eef6fc;
+  }
+  :root[data-lens="politica"] .minuta-suggestion-item input[type='checkbox'] {
+    accent-color: #145a94;
+  }
+  :root[data-lens="politica"] .minuta-suggested-title-box,
+  :root[data-lens="politica"] .minuta-fit-banner.is-ok {
+    border-color: #b4d1eb;
+    background: #eef6fc;
+    color: #0e3a61;
+  }
+  :root[data-lens="politica"] .suggestion-card {
+    border-color: #bdd2e6;
+  }
+  :root[data-lens="politica"] .suggestion-card:hover:not(:disabled) {
+    background: #e6f1fb;
+    border-color: #145a94;
+  }
+  :root[data-lens="politica"] .step-num {
+    background: #0c2d4d;
+    color: #d7ebfc;
+  }
+  :root[data-lens="politica"] .info-pop-btn {
+    border-color: #bfd3e7;
+    background-color: #f2f7fc;
+    color: #21496e;
+  }
+  :root[data-lens="politica"] .info-pop-btn:hover,
+  :root[data-lens="politica"] .info-pop-btn.is-open {
+    background-color: #145a94;
+    border-color: #145a94;
+    color: #ffffff;
+  }
+  :root[data-lens="politica"] .info-pop-card {
+    border-color: #bfd3e7;
+    box-shadow: 0 14px 32px rgba(12, 45, 77, 0.16);
+  }
+  :root[data-lens="politica"] .status-badge.is-official {
+    background: #e3f0fb;
+    color: #0e4370;
+    border-color: #b6d2ec;
   }
 }

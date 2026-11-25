@@ -959,9 +959,9 @@ export function PorGobiernoView() {
                           width={slotW * 0.88}
                           height={202}
                           rx={8}
-                          fill="#edf6f2"
-                          stroke="#0d6b58"
-                          strokeOpacity={0.3}
+                          fill="#eaf3fb"
+                          stroke="#145a94"
+                          strokeOpacity={0.35}
                         />
                       )}
                       {/* Inicial */}
@@ -971,7 +971,7 @@ export function PorGobiernoView() {
                         width={barW}
                         height={Math.max(2, hIni)}
                         rx={3}
-                        fill="#b8cbc4"
+                        fill="#bccde0"
                       />
                       {/* Vigente */}
                       <rect
@@ -980,7 +980,7 @@ export function PorGobiernoView() {
                         width={barW}
                         height={Math.max(2, hVig)}
                         rx={3}
-                        fill="#6b968a"
+                        fill="#6b95bd"
                       />
                       {/* Ejecutado */}
                       <rect
