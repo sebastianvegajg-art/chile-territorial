@@ -26,6 +26,15 @@ import type { SinimErrorFila } from './services/sinimService'
 import { MiMinutaPanel, MinutaSheet } from './minuta/MiMinutaPanel'
 import type { MinutaModalMode } from './minuta/MiMinutaPanel'
 import {
+  PROYECTO_CATEGORIAS,
+  ProyectosBillboardStrip,
+  ProyectosDistributionCharts,
+  classifyProyecto,
+  formatProjectDisplayName,
+  simplifyProyectoInst,
+} from './ProyectosVisuals'
+import type { ProyectoCategoriaId } from './ProyectosVisuals'
+import {
   buildSugerenciasGestionObra,
   cifraFromInstitucionPresupuesto,
   cifraFromPreguntaArrastre,
@@ -1202,6 +1211,9 @@ export function PoliticalView() {
 
   // Sub-estado pestaña Proyectos
   const [institucionFiltro, setInstitucionFiltro] = useState<string>('')
+  const [categoriaFiltro, setCategoriaFiltro] = useState<ProyectoCategoriaId | ''>('')
+  const [origenFiltro, setOrigenFiltro] = useState<'todos' | 'arrastre' | 'nuevo'>('todos')
+  const [ordenProyectos, setOrdenProyectos] = useState<'pagado' | 'costo' | 'nombre'>('pagado')
   const [searchInput, setSearchInput] = useState<string>('')
   const [appliedSearch, setAppliedSearch] = useState<string>('')
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
@@ -1504,6 +1516,34 @@ export function PoliticalView() {
       null
     )
   }, [selectedProjectId, proyectosState.data])
+
+  // Conteo por categoría temática y lista filtrada/ordenada de proyectos
+  const conteoPorCategoria = useMemo(() => {
+    const counts: Partial<Record<ProyectoCategoriaId, number>> = {}
+    for (const p of proyectosState.data?.proyectos ?? []) {
+      const cat = classifyProyecto(p)
+      counts[cat.id] = (counts[cat.id] ?? 0) + 1
+    }
+    return counts
+  }, [proyectosState.data])
+
+  const proyectosVisibles = useMemo(() => {
+    const base = proyectosState.data?.proyectos ?? []
+    const filtered = base.filter(p => {
+      if (origenFiltro !== 'todos' && p.clasificacion_arrastre !== origenFiltro) return false
+      if (categoriaFiltro && classifyProyecto(p).id !== categoriaFiltro) return false
+      return true
+    })
+    return [...filtered].sort((a, b) => {
+      if (ordenProyectos === 'nombre') {
+        return formatProjectDisplayName(a.nombre).localeCompare(formatProjectDisplayName(b.nombre), 'es')
+      }
+      if (ordenProyectos === 'costo') {
+        return (b.costo_total_millones ?? b.compromiso_anio_millones ?? -1) - (a.costo_total_millones ?? a.compromiso_anio_millones ?? -1)
+      }
+      return (b.pagado_anio_millones ?? -1) - (a.pagado_anio_millones ?? -1)
+    })
+  }, [proyectosState.data, origenFiltro, categoriaFiltro, ordenProyectos])
 
   // Handlers SINIM discreto en Presupuestos
   function handleSinimFileChange(_event: ChangeEvent<HTMLInputElement>) {
@@ -2619,7 +2659,7 @@ export function PoliticalView() {
               <button type="submit" className="primary">
                 Buscar
               </button>
-              {(appliedSearch || institucionFiltro || comunaProyectos) && (
+              {(appliedSearch || institucionFiltro || comunaProyectos || categoriaFiltro || origenFiltro !== 'todos') && (
                 <button
                   type="button"
                   className="secondary-btn"
@@ -2628,6 +2668,8 @@ export function PoliticalView() {
                     setAppliedSearch('')
                     setInstitucionFiltro('')
                     setComunaProyectos('')
+                    setCategoriaFiltro('')
+                    setOrigenFiltro('todos')
                     setSelectedProjectId(null)
                   }}
                 >
@@ -2652,74 +2694,139 @@ export function PoliticalView() {
                 />
               )}
 
+              {/* Letreros con números grandes (KPI Billboards) */}
+              <ProyectosBillboardStrip
+                proyectos={proyectosState.data.proyectos}
+                insuficientesCount={proyectosState.data.proyectos_insuficientes.length}
+                anio={anio}
+                activeOrigin={origenFiltro}
+                onSelectOrigin={next => {
+                  setOrigenFiltro(next)
+                  setSelectedProjectId(null)
+                }}
+              />
+
+              {/* Gráficos de torta interactivos para la distribución de proyectos */}
+              <ProyectosDistributionCharts
+                proyectos={proyectosState.data.proyectos}
+                anio={anio}
+                selectedCategory={categoriaFiltro}
+                onSelectCategory={cat => {
+                  setCategoriaFiltro(cat)
+                  setSelectedProjectId(null)
+                }}
+                selectedOrigin={origenFiltro}
+                onSelectOrigin={orig => {
+                  setOrigenFiltro(orig)
+                  setSelectedProjectId(null)
+                }}
+                selectedInstitucion={institucionFiltro}
+                onSelectInstitucion={inst => {
+                  setInstitucionFiltro(inst)
+                  setSelectedProjectId(null)
+                }}
+              />
+
               {/* Dos tarjetas separadas respondiendo las dos preguntas distintas */}
               <div className="aysen-arrastre-grid">
                 {[
                   proyectosState.data.pregunta_pagado_arrastre,
                   proyectosState.data.pregunta_presupuesto_comprometido,
-                ].map((preg, idx) => (
-                  <article key={idx} className="aysen-card aysen-question-card">
-                    <span className="aysen-card-kicker">Pregunta {idx + 1}</span>
-                    <h3>{preg.titulo}</h3>
-                    <p className={`aysen-big-figure${!preg.disponible ? ' is-missing' : ''}`}>
-                      {preg.porcentaje_pct !== null
-                        ? fmtPct(preg.porcentaje_pct)
-                        : preg.numerador_millones !== null
-                          ? fmtMillions(preg.numerador_millones)
-                          : 'Sin dato disponible'}
-                    </p>
-                    {(preg.numerador_millones !== null || preg.denominador_millones !== null) && (
-                      <p className="aysen-figure-caption">
-                        {fmtMillions(preg.numerador_millones)} sobre {fmtMillions(preg.denominador_millones)}
-                      </p>
-                    )}
-                    {preg.base_calculo && (
-                      <p className="aysen-base-note">
-                        <strong>Base:</strong> {preg.base_calculo}
-                      </p>
-                    )}
-                    {preg.frase_radial ? (
-                      <blockquote className="aysen-radio-quote">
-                        «{preg.frase_radial}»
-                      </blockquote>
-                    ) : preg.sin_dato_motivo ? (
-                      <p className="subtle">{preg.sin_dato_motivo}</p>
-                    ) : null}
-                    <div className="aysen-question-card-foot">
-                      {preg.proyectos_incluidos !== null && (
-                        <span className="subtle">
-                          {preg.proyectos_incluidos} obras incluidas
-                          {preg.proyectos_excluidos ? ` · ${preg.proyectos_excluidos} excluidas por falta de fecha` : ''}
-                        </span>
-                      )}
-                      <div className="aysen-card-actions">
-                        <AddToMinutaButton
-                          saved={isCifraInMinuta(
-                            cifraFromPreguntaArrastre(
-                              preg,
-                              anio,
-                              idx === 0 ? 'pagado' : 'comprometido',
-                              comunaProyectos ? `Comuna de ${getComunaNombre(comunaProyectos)}` : 'Región de Aysén',
-                              proyectosState.data!.en_curso,
-                            ).id,
+                ].map((preg, idx) => {
+                  const isPregunta1 = idx === 0
+                  const missingP1Historico = isPregunta1 && !preg.disponible && anio < 2026
+                  const tituloSimple = isPregunta1
+                    ? `De lo pagado en ${anio}, ¿cuánto fue para contratos firmados antes de este gobierno?`
+                    : `Del presupuesto de obras de ${anio}, ¿cuánto ya venía comprometido de antes?`
+                  return (
+                    <article key={idx} className={`aysen-card aysen-question-card${missingP1Historico ? ' is-info-alt' : ''}`}>
+                      <span className="aysen-card-kicker">
+                        {isPregunta1 ? 'Pregunta 1 · Por fecha de contrato' : 'Pregunta 2 · Obras que venían de antes'}
+                      </span>
+                      <h3>{tituloSimple}</h3>
+
+                      {missingP1Historico ? (
+                        <div className="proy-p1-guide">
+                          <span className="proy-p1-pill">Requiere fecha exacta de firma del contrato</span>
+                          <p>
+                            Para <strong>{anio}</strong>, DIPRES publica el dinero de las <strong>{proyectosState.data!.proyectos.length} obras</strong>, pero no incluye la fecha exacta en que se firmó cada contrato. Ese dato sí está publicado con contratos MOP en el corte <strong>2026</strong>.
+                          </p>
+                          <button
+                            type="button"
+                            className="aysen-cta-btn"
+                            onClick={() => {
+                              setAnio(2026)
+                              setSelectedProjectId(null)
+                            }}
+                          >
+                            Ver corte 2026 con fechas de contrato →
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <p className={`aysen-big-figure${!preg.disponible ? ' is-missing' : ''}`}>
+                            {preg.porcentaje_pct !== null
+                              ? fmtPct(preg.porcentaje_pct)
+                              : preg.numerador_millones !== null
+                                ? fmtMillions(preg.numerador_millones)
+                                : 'Sin dato disponible'}
+                          </p>
+                          {(preg.numerador_millones !== null || preg.denominador_millones !== null) && (
+                            <p className="aysen-figure-caption">
+                              <strong>{fmtMillions(preg.numerador_millones)}</strong> de un total de <strong>{fmtMillions(preg.denominador_millones)}</strong> revisados
+                            </p>
                           )}
-                          onClick={() =>
-                            handleToggleMinutaCifra(
+                          {preg.frase_radial ? (
+                            <blockquote className="aysen-radio-quote">
+                              {preg.frase_radial}
+                            </blockquote>
+                          ) : preg.sin_dato_motivo ? (
+                            <p className="subtle">{preg.sin_dato_motivo}</p>
+                          ) : null}
+                          {preg.base_calculo && (
+                            <p className="aysen-plain-context">
+                              <strong>Cómo se calcula:</strong> {preg.base_calculo}
+                            </p>
+                          )}
+                        </>
+                      )}
+
+                      <div className="aysen-question-card-foot">
+                        {preg.proyectos_incluidos !== null && !missingP1Historico && (
+                          <span className="subtle">
+                            {preg.proyectos_incluidos} obras incluidas
+                            {preg.proyectos_excluidos ? ` · ${preg.proyectos_excluidos} sin fecha exacta` : ''}
+                          </span>
+                        )}
+                        <div className="aysen-card-actions">
+                          <AddToMinutaButton
+                            saved={isCifraInMinuta(
                               cifraFromPreguntaArrastre(
                                 preg,
                                 anio,
                                 idx === 0 ? 'pagado' : 'comprometido',
                                 comunaProyectos ? `Comuna de ${getComunaNombre(comunaProyectos)}` : 'Región de Aysén',
                                 proyectosState.data!.en_curso,
-                              ),
-                            )
-                          }
-                        />
-                        <SourceLink fuente={preg.fuente} />
+                              ).id,
+                            )}
+                            onClick={() =>
+                              handleToggleMinutaCifra(
+                                cifraFromPreguntaArrastre(
+                                  preg,
+                                  anio,
+                                  idx === 0 ? 'pagado' : 'comprometido',
+                                  comunaProyectos ? `Comuna de ${getComunaNombre(comunaProyectos)}` : 'Región de Aysén',
+                                  proyectosState.data!.en_curso,
+                                ),
+                              )
+                            }
+                          />
+                          <SourceLink fuente={preg.fuente} />
+                        </div>
                       </div>
-                    </div>
-                  </article>
-                ))}
+                    </article>
+                  )
+                })}
               </div>
 
               {/* Vista de Ficha de Proyecto o Lista de Obras */}
@@ -2736,46 +2843,142 @@ export function PoliticalView() {
               ) : (
                 <section className="aysen-projects-list-wrap" aria-label="Listado de obras y contratos">
                   <div className="aysen-list-head">
-                    <h3>Obras registradas ({proyectosState.data.proyectos.length})</h3>
-                    <span className="subtle">Toca cualquier obra para abrir su ficha e hitos oficiales.</span>
+                    <div>
+                      <h3>
+                        Obras registradas ({proyectosVisibles.length}
+                        {proyectosVisibles.length !== proyectosState.data.proyectos.length
+                          ? ` de ${proyectosState.data.proyectos.length}`
+                          : ''})
+                      </h3>
+                      <span className="subtle">Filtra por área, origen o institución y toca cualquier obra para ver su ficha completa.</span>
+                    </div>
+
+                    <label className="proy-sort-field">
+                      <span>Ordenar por</span>
+                      <select
+                        value={ordenProyectos}
+                        onChange={e => setOrdenProyectos(e.target.value as 'pagado' | 'costo' | 'nombre')}
+                      >
+                        <option value="pagado">Mayor pago en {anio}</option>
+                        <option value="costo">Mayor monto total</option>
+                        <option value="nombre">Nombre (A–Z)</option>
+                      </select>
+                    </label>
                   </div>
 
-                  {proyectosState.data.proyectos.length === 0 ? (
+                  {/* Clasificación rápida por área temática */}
+                  <div className="proy-category-pills" role="group" aria-label="Filtrar obras por área temática">
+                    <button
+                      type="button"
+                      className={`proy-cat-pill${categoriaFiltro === '' ? ' is-active' : ''}`}
+                      aria-pressed={categoriaFiltro === ''}
+                      onClick={() => setCategoriaFiltro('')}
+                    >
+                      Todas ({proyectosState.data.proyectos.length})
+                    </button>
+                    {PROYECTO_CATEGORIAS.map(cat => {
+                      const count = conteoPorCategoria[cat.id] ?? 0
+                      if (count === 0) return null
+                      const isActive = categoriaFiltro === cat.id
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          className={`proy-cat-pill${isActive ? ' is-active' : ''}`}
+                          aria-pressed={isActive}
+                          onClick={() => setCategoriaFiltro(isActive ? '' : cat.id)}
+                        >
+                          <span className="proy-cat-dot" style={{ background: cat.color }} aria-hidden="true" />
+                          {cat.shortLabel} ({count})
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {(categoriaFiltro || origenFiltro !== 'todos' || institucionFiltro) && (
+                    <div className="proy-active-filters" role="status">
+                      <span>Filtros activos:</span>
+                      {categoriaFiltro && (
+                        <span className="proy-active-chip">
+                          Área: <strong>{PROYECTO_CATEGORIAS.find(c => c.id === categoriaFiltro)?.label}</strong>
+                        </span>
+                      )}
+                      {origenFiltro !== 'todos' && (
+                        <span className="proy-active-chip">
+                          Origen: <strong>{origenFiltro === 'arrastre' ? 'Venían de antes' : `Nuevas en ${anio}`}</strong>
+                        </span>
+                      )}
+                      {institucionFiltro && (
+                        <span className="proy-active-chip">
+                          Institución: <strong>{simplifyProyectoInst(institucionFiltro)}</strong>
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() => {
+                          setCategoriaFiltro('')
+                          setOrigenFiltro('todos')
+                          setInstitucionFiltro('')
+                        }}
+                      >
+                        Ver todas ✕
+                      </button>
+                    </div>
+                  )}
+
+                  {proyectosVisibles.length === 0 ? (
                     <p className="aysen-empty">
                       No se encontraron obras con los filtros aplicados para {anio}.
                     </p>
                   ) : (
                     <ul className="aysen-project-list">
-                      {proyectosState.data.proyectos.map(proy => (
-                        <li key={proy.id}>
-                          <button
-                            type="button"
-                            className="aysen-project-row"
-                            onClick={() => setSelectedProjectId(proy.id)}
-                          >
-                            <div className="aysen-project-row-top">
-                              <span className={`aysen-arrastre-badge is-${proy.clasificacion_arrastre}`}>
-                                {proy.etiqueta_arrastre}
-                              </span>
-                              <span className="aysen-project-meta">
-                                {proy.comuna ? `${proy.comuna} · ` : ''}{proy.institucion}
-                              </span>
-                            </div>
-                            <strong className="aysen-project-name">{proy.nombre}</strong>
-                            <div className="aysen-project-row-nums">
-                              <span>
-                                <small>Contratado</small>
-                                <strong>{fmtMillions(proy.costo_total_millones)}</strong>
-                              </span>
-                              <span>
-                                <small>Pagado {anio}</small>
-                                <strong>{fmtMillions(proy.pagado_anio_millones)}</strong>
-                              </span>
-                              <span className="aysen-row-arrow" aria-hidden="true">Ver ficha →</span>
-                            </div>
-                          </button>
-                        </li>
-                      ))}
+                      {proyectosVisibles.map(proy => {
+                        const cat = classifyProyecto(proy)
+                        const originLabel =
+                          proy.clasificacion_arrastre === 'arrastre'
+                            ? 'Venía de antes'
+                            : proy.clasificacion_arrastre === 'nuevo'
+                              ? `Nueva en ${anio}`
+                              : proy.etiqueta_arrastre
+                        return (
+                          <li key={proy.id}>
+                            <button
+                              type="button"
+                              className="aysen-project-row"
+                              onClick={() => setSelectedProjectId(proy.id)}
+                            >
+                              <div className="aysen-project-row-top">
+                                <span
+                                  className="proy-row-cat-tag"
+                                  style={{ background: cat.softBg, color: cat.color }}
+                                >
+                                  <i style={{ background: cat.color }} aria-hidden="true" />
+                                  {cat.shortLabel}
+                                </span>
+                                <span className={`aysen-arrastre-badge is-${proy.clasificacion_arrastre}`}>
+                                  {originLabel}
+                                </span>
+                                <span className="aysen-project-meta">
+                                  {proy.comuna ? `${proy.comuna} · ` : ''}{simplifyProyectoInst(proy.institucion)}
+                                </span>
+                              </div>
+                              <strong className="aysen-project-name">{formatProjectDisplayName(proy.nombre)}</strong>
+                              <div className="aysen-project-row-nums">
+                                <span>
+                                  <small>Monto total</small>
+                                  <strong>{fmtMillions(proy.costo_total_millones)}</strong>
+                                </span>
+                                <span>
+                                  <small>Pagado en {anio}</small>
+                                  <strong>{fmtMillions(proy.pagado_anio_millones)}</strong>
+                                </span>
+                                <span className="aysen-row-arrow" aria-hidden="true">Ver ficha →</span>
+                              </div>
+                            </button>
+                          </li>
+                        )
+                      })}
                     </ul>
                   )}
                 </section>

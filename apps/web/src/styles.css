@@ -4157,3 +4157,424 @@ dialog::backdrop { background: #07392f99; }
     word-break: break-all;
   }
 }
+
+
+/* ============================================================
+   PROYECTOS · LETREROS KPI GRANDES, TORTAS INTERACTIVAS Y CLASIFICACIÓN
+============================================================ */
+
+.proy-billboards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.proy-billboard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid #d7e2dd;
+  background: #ffffff;
+  color: var(--ink);
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+  transition: transform .15s ease, box-shadow .18s ease, border-color .16s ease;
+}
+.proy-billboard::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: #0d7a5f;
+}
+.proy-billboard.is-arrastre::before { background: #c97b2c; }
+.proy-billboard.is-nuevo::before { background: #148b6b; }
+.proy-billboard.is-money::before { background: #1d6f96; }
+
+button.proy-billboard {
+  cursor: pointer;
+}
+button.proy-billboard:hover {
+  transform: translateY(-2px);
+  border-color: #0d7a5f;
+  box-shadow: 0 8px 20px rgba(10, 59, 49, 0.08);
+}
+button.proy-billboard.is-selected {
+  border-color: #0d7a5f;
+  background: #f3faf7;
+  box-shadow: 0 0 0 2px rgba(13, 122, 95, 0.14);
+}
+
+.proy-billboard-kicker {
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: #466059;
+}
+.proy-billboard-num {
+  font-family: var(--font-display);
+  font-size: clamp(1.7rem, 3.6vw, 2.35rem);
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -.03em;
+  color: #0a3b31;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+}
+.proy-billboard-unit {
+  font-family: var(--font-sans);
+  font-size: .46em;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: #4d6760;
+}
+.proy-billboard-sub {
+  font-size: .8rem;
+  color: #4b615b;
+  line-height: 1.35;
+}
+.proy-billboard-sub strong {
+  color: #16362e;
+}
+
+/* Sección de gráficos de torta */
+.proy-charts-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.proy-charts-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+.proy-charts-bar h3 {
+  margin: 0 0 2px;
+  font-size: 1.08rem;
+  color: var(--dark);
+}
+.proy-charts-bar p {
+  margin: 0;
+  font-size: .84rem;
+}
+
+.proy-donuts-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+.proy-donut-right-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.proy-donut-subtabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #eaf1ed;
+  width: fit-content;
+}
+.proy-donut-subtabs button {
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #3f5851;
+  font-size: .78rem;
+  font-weight: 600;
+}
+.proy-donut-subtabs button[aria-pressed='true'] {
+  background: #ffffff;
+  color: #0a3b31;
+  box-shadow: 0 1px 3px rgba(10, 59, 49, 0.12);
+}
+
+.proy-donut-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1 1 auto;
+}
+.proy-donut-head h3 {
+  margin: 0 0 2px;
+  font-size: 1rem;
+  color: var(--dark);
+}
+.proy-donut-head p {
+  margin: 0;
+  font-size: .82rem;
+}
+
+.proy-donut-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: center;
+}
+.proy-donut-svg-wrap {
+  position: relative;
+  width: 196px;
+  height: 196px;
+  margin: 0 auto;
+  flex-shrink: 0;
+}
+.proy-donut-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.proy-donut-seg {
+  transition: stroke-width .18s ease, opacity .18s ease;
+}
+.proy-donut-seg.is-clickable {
+  cursor: pointer;
+}
+
+.proy-donut-center {
+  position: absolute;
+  inset: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+  padding: 6px;
+}
+.proy-donut-center strong {
+  font-family: var(--font-display);
+  font-size: 1.32rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--dark);
+}
+.proy-donut-center span {
+  margin-top: 2px;
+  font-size: .72rem;
+  font-weight: 600;
+  color: #3a544d;
+  line-height: 1.2;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.proy-donut-center small {
+  margin-top: 2px;
+  font-size: .69rem;
+  color: #637973;
+}
+
+.proy-donut-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.proy-legend-btn {
+  width: 100%;
+  min-height: 36px;
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: #f7faf8;
+  color: var(--ink);
+  text-align: left;
+  font-size: .82rem;
+  transition: background-color .14s ease, border-color .14s ease;
+}
+.proy-legend-btn:hover:not(:disabled) {
+  background: #ebf5f0;
+  border-color: #b7d6c9;
+}
+.proy-legend-btn.is-selected {
+  background: #e4f4ed;
+  border-color: #0d7a5f;
+}
+.proy-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+.proy-legend-name {
+  font-weight: 550;
+  color: #19352e;
+  line-height: 1.25;
+}
+.proy-legend-val {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.proy-legend-val strong {
+  color: var(--dark);
+  font-size: .84rem;
+}
+.proy-legend-val small {
+  color: #5a706a;
+  font-size: .75rem;
+}
+
+/* Guía clara cuando Pregunta 1 no tiene fechas de firma en años históricos */
+.proy-p1-guide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #f4f9f7;
+  border: 1px dashed #b3cfc3;
+}
+.proy-p1-guide p {
+  margin: 0;
+  font-size: .89rem;
+  line-height: 1.55;
+  color: #213e37;
+}
+.proy-p1-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #e3f1eb;
+  color: #0d5a47;
+  font-size: .75rem;
+  font-weight: 700;
+}
+
+/* Filtros rápidos por área y ordenamiento en listado de proyectos */
+.proy-sort-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .82rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.proy-sort-field select {
+  min-height: 36px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid #c9d6d0;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: .82rem;
+}
+
+.proy-category-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+.proy-cat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid #d1ddd7;
+  background: #ffffff;
+  color: #233f38;
+  font-size: .8rem;
+  font-weight: 600;
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+}
+.proy-cat-pill:hover {
+  border-color: #0d7a5f;
+  background: #f2faf6;
+}
+.proy-cat-pill.is-active {
+  border-color: #0d7a5f;
+  background: #0d7a5f;
+  color: #ffffff;
+}
+.proy-cat-pill.is-active .proy-cat-dot {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.75);
+}
+.proy-cat-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.proy-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  background: #eef7f3;
+  border: 1px solid #c4dfd3;
+  font-size: .82rem;
+  color: #23433b;
+}
+.proy-active-chip {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid #c2dcd0;
+}
+
+.proy-row-cat-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: .74rem;
+  font-weight: 700;
+}
+.proy-row-cat-tag i {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+}
+
+@media (min-width: 720px) {
+  .proy-billboards {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .proy-donut-layout {
+    grid-template-columns: 196px minmax(0, 1fr);
+    gap: 18px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .proy-donuts-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    align-items: stretch;
+  }
+}
