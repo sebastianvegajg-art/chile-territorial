@@ -907,9 +907,9 @@ dialog::backdrop { background: #07392f99; }
 }
 .compare-track {
   position: relative;
-  height: 14px;
-  border-radius: 4px;
-  background: #e6eee9;
+  height: 8px;
+  border-radius: 999px;
+  background: #edf2ef;
   overflow: hidden;
 }
 .compare-track.is-diverging::before {
@@ -926,11 +926,12 @@ dialog::backdrop { background: #07392f99; }
   top: 0;
   bottom: 0;
   left: 0;
-  border-radius: 4px;
+  border-radius: 999px;
+  transition: width .25s ease;
 }
-.compare-fill.is-primary { background: var(--accent); }
-.compare-fill.is-reference { background: #375e76; }
-.compare-fill.is-negative { background: #b44335; }
+.compare-fill.is-primary { background: linear-gradient(90deg, rgba(15, 140, 108, 0.5) 0%, #0b7a5e 100%); }
+.compare-fill.is-reference { background: linear-gradient(90deg, rgba(54, 95, 130, 0.5) 0%, #365f82 100%); }
+.compare-fill.is-negative { background: linear-gradient(90deg, #c44738 0%, rgba(209, 96, 82, 0.5) 100%); }
 
 /* Tablas Vista Política */
 .pol-table-gap { margin-top: .25rem; }
@@ -2268,9 +2269,79 @@ dialog::backdrop { background: #07392f99; }
   vertical-align: -1px;
 }
 .aysen-swatch.is-aysen { background: var(--ay-invest); }
+.aysen-swatch.is-aysen-capsule {
+  width: 10px;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #0f8c6c 0%, rgba(15, 140, 108, 0.25) 100%);
+  border: 1px solid #0b7a5e;
+}
+.aysen-swatch.is-aysen-neg {
+  width: 10px;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(209, 96, 82, 0.25) 0%, #c44738 100%);
+  border: 1px solid #b54033;
+}
+.aysen-swatch.is-chile-line {
+  width: 14px;
+  height: 3px;
+  border-radius: 999px;
+  background: #365f82;
+  vertical-align: 3px;
+}
 .aysen-swatch.is-chile { background: var(--ay-current); }
 .aysen-swatch.is-current { background: var(--ay-current); }
 .aysen-swatch.is-invest { background: var(--ay-invest); }
+
+/* Selector de escala comparable en Serie Histórica (#comparar) */
+.history-scale-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  margin-bottom: 10px;
+}
+.history-scale-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #edf3ef;
+  border: 1px solid rgba(17, 43, 41, 0.08);
+}
+.history-scale-pills button {
+  border: 0;
+  background: transparent;
+  color: #3f554f;
+  font-size: .78rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.history-scale-pills button[aria-pressed="true"] {
+  background: #ffffff;
+  color: #07392f;
+  box-shadow: 0 1px 4px rgba(7, 57, 47, 0.14);
+}
+.history-scale-note {
+  font-size: .78rem;
+  line-height: 1.35;
+}
+.history-index-pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 600;
+  background: #e6f4ee;
+  color: #085a45;
+}
 
 .aysen-chart-wrap {
   width: 100%;
@@ -2330,16 +2401,17 @@ dialog::backdrop { background: #07392f99; }
 .aysen-activity-name { font-weight: 650; color: var(--ink); }
 .aysen-activity-val { font-variant-numeric: tabular-nums; font-weight: 750; color: var(--dark); white-space: nowrap; }
 .aysen-activity-track {
-  height: 10px;
+  height: 7px;
   border-radius: 999px;
-  background: #e9f0ec;
+  background: #edf2ef;
   overflow: hidden;
 }
 .aysen-activity-fill {
   display: block;
   height: 100%;
   border-radius: 999px;
-  background: var(--accent);
+  background: linear-gradient(90deg, rgba(15, 140, 108, 0.45) 0%, #0b7a5e 100%);
+  transition: width .28s ease;
 }
 .aysen-sector-card h3 {
   margin: 0;

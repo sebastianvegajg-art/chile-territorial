@@ -247,6 +247,39 @@ function SourceDetailsBlock({
    GRÁFICOS ACCESIBLES MOBILE-FIRST · PESTAÑA ECONOMÍA
 ============================================================ */
 
+function buildSmoothSvgPath(pts: Array<{ x: number; y: number }>): string {
+  if (pts.length === 0) return ''
+  if (pts.length === 1) return `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`
+  if (pts.length === 2) {
+    return `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)} L${pts[1].x.toFixed(1)},${pts[1].y.toFixed(1)}`
+  }
+  let d = `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)]
+    const p1 = pts[i]
+    const p2 = pts[i + 1]
+    const p3 = pts[Math.min(pts.length - 1, i + 2)]
+    const cp1x = p1.x + (p2.x - p0.x) / 6
+    const cp1y = p1.y + (p2.y - p0.y) / 6
+    const cp2x = p2.x - (p3.x - p1.x) / 6
+    const cp2y = p2.y - (p3.y - p1.y) / 6
+    d += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`
+  }
+  return d
+}
+
+function buildCleanGrowthTicks(low: number, high: number): number[] {
+  const span = Math.max(2, high - low)
+  const step = span <= 10 ? 2 : span <= 24 ? 5 : 10
+  const start = Math.ceil(low / step) * step
+  const ticks: number[] = [0]
+  for (let v = start; v <= high; v += step) {
+    if (Math.abs(v) < step * 0.65) continue
+    ticks.push(v)
+  }
+  return Array.from(new Set(ticks)).sort((a, b) => b - a)
+}
+
 function CrecimientoChart({
   serie,
   selectedYear,
@@ -256,59 +289,91 @@ function CrecimientoChart({
   selectedYear: number
   onSelectYear: (year: number) => void
 }) {
+  const [hoveredYear, setHoveredYear] = useState<number | null>(null)
   const validPoints = serie.filter(p => p.aysen_pct !== null || p.chile_pct !== null)
   if (validPoints.length === 0) {
     return <p className="aysen-empty">Sin dato disponible para la serie histórica de crecimiento real del PIB.</p>
   }
 
-  const W = 640
-  const H = 260
-  const padL = 48
-  const padR = 16
-  const padT = 22
-  const padB = 34
+  const W = 680
+  const H = 276
+  const padL = 50
+  const padR = 20
+  const padT = 30
+  const padB = 36
   const plotW = W - padL - padR
   const plotH = H - padT - padB
 
   const allVals = validPoints.flatMap(p => [p.aysen_pct, p.chile_pct]).filter((v): v is number => v !== null)
   const minVal = Math.min(0, ...allVals)
   const maxVal = Math.max(0, ...allVals)
-  const span = Math.max(2, maxVal - minVal)
-  const low = minVal - span * 0.12
-  const high = maxVal + span * 0.14
+  const span = Math.max(4, maxVal - minVal)
+  const low = minVal - span * 0.16
+  const high = maxVal + span * 0.18
 
   const yPos = (val: number) => padT + ((high - val) / (high - low)) * plotH
   const zeroY = yPos(0)
   const stepX = plotW / Math.max(1, validPoints.length)
-  const barW = Math.min(26, Math.max(10, stepX * 0.48))
+  // Cápsulas esbeltas y sutiles en vez de bloques rectangulares toscos
+  const barW = Math.min(12, Math.max(7, stepX * 0.24))
 
-  const chilePath = validPoints
-    .map((p, i) => {
-      if (p.chile_pct === null) return null
-      const cx = padL + stepX * i + stepX / 2
-      return { x: cx, y: yPos(p.chile_pct) }
-    })
-    .reduce<string>((acc, pt, idx) => {
-      if (!pt) return acc
-      const cmd = acc === '' || validPoints[idx - 1]?.chile_pct === null ? 'M' : 'L'
-      return `${acc}${cmd}${pt.x.toFixed(1)},${pt.y.toFixed(1)} `
-    }, '')
+  const chileSegments: Array<Array<{ x: number; y: number }>> = []
+  let currentSeg: Array<{ x: number; y: number }> = []
+  validPoints.forEach((p, i) => {
+    if (p.chile_pct === null) {
+      if (currentSeg.length) chileSegments.push(currentSeg)
+      currentSeg = []
+      return
+    }
+    currentSeg.push({ x: padL + stepX * i + stepX / 2, y: yPos(p.chile_pct) })
+  })
+  if (currentSeg.length) chileSegments.push(currentSeg)
 
-  const activePoint = validPoints.find(p => p.anio === selectedYear) ?? validPoints.at(-1)!
-  const ticks = [high, (high + low) / 2, 0, low].filter((v, i, arr) => arr.findIndex(x => Math.abs(x - v) < 0.5) === i)
+  const focusYear = hoveredYear ?? selectedYear
+  const activePoint = validPoints.find(p => p.anio === focusYear) ?? validPoints.at(-1)!
+  const ticks = buildCleanGrowthTicks(low, high)
+  const gapPp =
+    activePoint.aysen_pct !== null && activePoint.chile_pct !== null
+      ? activePoint.aysen_pct - activePoint.chile_pct
+      : null
 
   return (
     <div className="aysen-chart-wrap">
       <div className="aysen-chart-legend" aria-label="Leyenda del gráfico">
-        <span><i className="aysen-swatch is-aysen" aria-hidden="true" /> Aysén (barras, % real)</span>
-        <span><i className="aysen-swatch is-chile" aria-hidden="true" /> Chile (línea de referencia)</span>
+        <span><i className="aysen-swatch is-aysen-capsule" aria-hidden="true" /> Aysén (crecimiento real anual)</span>
+        <span><i className="aysen-swatch is-aysen-neg" aria-hidden="true" /> Contracción Aysén</span>
+        <span><i className="aysen-swatch is-chile-line" aria-hidden="true" /> Chile (referencia)</span>
       </div>
       <svg
         className="aysen-svg-chart"
         viewBox={`0 0 ${W} ${H}`}
         role="img"
         aria-label={`Crecimiento real anual del PIB de Aysén comparado con Chile entre ${validPoints[0].anio} y ${validPoints.at(-1)!.anio}.`}
+        onMouseLeave={() => setHoveredYear(null)}
       >
+        <defs>
+          <linearGradient id="aysenPosGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#0f8c6c" stopOpacity="0.92" />
+            <stop offset="100%" stopColor="#0f8c6c" stopOpacity="0.16" />
+          </linearGradient>
+          <linearGradient id="aysenPosGradActive" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#06664e" stopOpacity="1" />
+            <stop offset="100%" stopColor="#0f8c6c" stopOpacity="0.28" />
+          </linearGradient>
+          <linearGradient id="aysenNegGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#d16052" stopOpacity="0.18" />
+            <stop offset="100%" stopColor="#c44738" stopOpacity="0.9" />
+          </linearGradient>
+          <linearGradient id="aysenNegGradActive" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#c44738" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#9e2a1f" stopOpacity="1" />
+          </linearGradient>
+          <linearGradient id="aysenFocusCol" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#0b7a5e" stopOpacity="0.09" />
+            <stop offset="100%" stopColor="#0b7a5e" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+
         {ticks.map((tick, idx) => {
           const y = yPos(tick)
           const isZero = Math.abs(tick) < 0.01
@@ -319,11 +384,19 @@ function CrecimientoChart({
                 x2={W - padR}
                 y1={y}
                 y2={y}
-                stroke={isZero ? '#7c948b' : '#dfe7e2'}
-                strokeWidth={isZero ? 1.4 : 1}
+                stroke={isZero ? '#8da39b' : '#e8eeea'}
+                strokeWidth={isZero ? 1.25 : 1}
+                strokeDasharray={isZero ? undefined : '3 3'}
               />
-              <text x={padL - 8} y={y + 4} textAnchor="end" fontSize="11" fill="#4b5e59">
-                {num1.format(tick)}%
+              <text
+                x={padL - 10}
+                y={y + 4}
+                textAnchor="end"
+                fontSize="11"
+                fontWeight={isZero ? '600' : '400'}
+                fill={isZero ? '#344c45' : '#6b7e78'}
+              >
+                {tick > 0 ? `+${num1.format(tick)}%` : `${num1.format(tick)}%`}
               </text>
             </g>
           )
@@ -331,82 +404,144 @@ function CrecimientoChart({
 
         {validPoints.map((pt, i) => {
           const cx = padL + stepX * i + stepX / 2
-          const isSelected = pt.anio === activePoint.anio
+          const isActive = pt.anio === activePoint.anio
+          const isPinned = pt.anio === selectedYear
           const val = pt.aysen_pct
-          const topY = val !== null ? Math.min(yPos(val), zeroY) : zeroY
-          const h = val !== null ? Math.max(2, Math.abs(yPos(val) - zeroY)) : 0
-          const fill = val !== null && val < 0
-            ? (isSelected ? '#99281d' : '#c95c4e')
-            : (isSelected ? '#065a46' : '#08785e')
-          const showLabel = validPoints.length <= 9 || i % 2 === 0 || i === validPoints.length - 1 || isSelected
+          const valY = val !== null ? yPos(val) : zeroY
+          const topY = val !== null ? Math.min(valY, zeroY) : zeroY
+          const h = val !== null ? Math.max(3, Math.abs(valY - zeroY)) : 0
+          const isNeg = val !== null && val < 0
+          const fillId = isNeg
+            ? (isActive ? 'url(#aysenNegGradActive)' : 'url(#aysenNegGrad)')
+            : (isActive ? 'url(#aysenPosGradActive)' : 'url(#aysenPosGrad)')
+          const capColor = isNeg
+            ? (isActive ? '#9e2a1f' : '#c95648')
+            : (isActive ? '#065a46' : '#0d8566')
+          const showYearLabel = validPoints.length <= 9 || i % 2 === 0 || i === validPoints.length - 1 || isActive
+          const labelY = isNeg ? Math.min(H - 42, valY + 16) : Math.max(padT - 8, valY - 10)
 
           return (
             <g
               key={pt.anio}
               className="aysen-svg-bar-group"
+              onMouseEnter={() => setHoveredYear(pt.anio)}
               onClick={() => onSelectYear(pt.anio)}
             >
-              {isSelected && (
+              {/* Zona interactiva amplia e invisible */}
+              <rect x={cx - stepX / 2} y={padT - 8} width={stepX} height={plotH + 34} fill="transparent" />
+
+              {isActive && (
                 <rect
-                  x={cx - stepX / 2 + 2}
-                  y={padT}
-                  width={Math.max(4, stepX - 4)}
-                  height={plotH}
-                  rx={4}
-                  fill="#08785e14"
+                  x={cx - Math.min(22, stepX * 0.42)}
+                  y={padT - 4}
+                  width={Math.min(44, stepX * 0.84)}
+                  height={plotH + 8}
+                  rx={10}
+                  fill="url(#aysenFocusCol)"
                 />
               )}
+
               {val !== null && (
-                <rect
-                  x={cx - barW / 2}
-                  y={topY}
-                  width={barW}
-                  height={h}
-                  rx={3}
-                  fill={fill}
-                />
+                <>
+                  <rect
+                    x={cx - barW / 2}
+                    y={topY}
+                    width={barW}
+                    height={h}
+                    rx={barW / 2}
+                    fill={fillId}
+                  />
+                  {/* Halo sutil + punta luminosa tipo editorial */}
+                  {isActive && (
+                    <circle
+                      cx={cx}
+                      cy={valY}
+                      r={8}
+                      fill={capColor}
+                      fillOpacity={0.18}
+                    />
+                  )}
+                  <circle
+                    cx={cx}
+                    cy={valY}
+                    r={isActive ? 4.4 : 2.8}
+                    fill={capColor}
+                    stroke="#ffffff"
+                    strokeWidth={1.5}
+                  />
+                  {isActive && (
+                    <text
+                      x={cx}
+                      y={labelY}
+                      textAnchor="middle"
+                      fontSize="11"
+                      fontWeight="700"
+                      fill={capColor}
+                    >
+                      {fmtPct(val, true)}
+                    </text>
+                  )}
+                </>
               )}
-              {showLabel && (
-                <text
-                  x={cx}
-                  y={H - 12}
-                  textAnchor="middle"
-                  fontSize="11"
-                  fontWeight={isSelected ? '700' : '500'}
-                  fill={isSelected ? '#07392f' : '#4b5e59'}
-                >
-                  {pt.anio}
-                </text>
+
+              {showYearLabel && (
+                <g>
+                  {isPinned && (
+                    <rect
+                      x={cx - 19}
+                      y={H - 25}
+                      width={38}
+                      height={18}
+                      rx={9}
+                      fill="#e7f5ef"
+                      stroke="#9acbb9"
+                      strokeWidth={1}
+                    />
+                  )}
+                  <text
+                    x={cx}
+                    y={H - 12}
+                    textAnchor="middle"
+                    fontSize="11"
+                    fontWeight={isActive || isPinned ? '700' : '500'}
+                    fill={isActive || isPinned ? '#07392f' : '#5e706b'}
+                  >
+                    {pt.anio}
+                  </text>
+                </g>
               )}
             </g>
           )
         })}
 
-        {chilePath && (
+        {/* Curva suave de Chile como referencia elegante */}
+        {chileSegments.map((seg, sIdx) => (
           <path
-            d={chilePath}
+            key={`cl-seg-${sIdx}`}
+            d={buildSmoothSvgPath(seg)}
             fill="none"
-            stroke="#2d5c78"
-            strokeWidth={2.4}
+            stroke="#365f82"
+            strokeWidth={2}
             strokeLinecap="round"
             strokeLinejoin="round"
+            strokeOpacity={0.85}
           />
-        )}
+        ))}
 
         {validPoints.map((pt, i) => {
           if (pt.chile_pct === null) return null
           const cx = padL + stepX * i + stepX / 2
           const cy = yPos(pt.chile_pct)
-          const isSelected = pt.anio === activePoint.anio
+          const isActive = pt.anio === activePoint.anio
           return (
             <circle
               key={`cl-${pt.anio}`}
               cx={cx}
               cy={cy}
-              r={isSelected ? 4.8 : 3}
-              fill="#2d5c78"
-              stroke="#fff"
-              strokeWidth={1.6}
+              r={isActive ? 4.4 : 2.6}
+              fill={isActive ? '#2c5375' : '#ffffff'}
+              stroke="#365f82"
+              strokeWidth={isActive ? 1.8 : 1.7}
             />
           )
         })}
@@ -414,8 +549,13 @@ function CrecimientoChart({
 
       <div className="aysen-chart-readout" aria-live="polite">
         <span className="aysen-readout-year">Año {activePoint.anio}</span>
-        <span>Aysén: <strong>{fmtPct(activePoint.aysen_pct, true)}</strong></span>
+        <span>Aysén: <strong className={activePoint.aysen_pct !== null && activePoint.aysen_pct < 0 ? 'is-neg' : 'is-pos'}>{fmtPct(activePoint.aysen_pct, true)}</strong></span>
         <span>Chile: <strong>{fmtPct(activePoint.chile_pct, true)}</strong></span>
+        {gapPp !== null && (
+          <span className="subtle">
+            Brecha: <strong>{gapPp >= 0 ? `+${num1.format(gapPp)}` : num1.format(gapPp)} pp</strong>
+          </span>
+        )}
         {activePoint.estado && <span className="subtle">({activePoint.estado})</span>}
       </div>
     </div>
@@ -431,36 +571,37 @@ function ParticipacionChart({
   selectedYear: number
   onSelectYear: (year: number) => void
 }) {
+  const [hoveredYear, setHoveredYear] = useState<number | null>(null)
   const validPoints = serie.filter(p => p.participacion_pct !== null)
   if (validPoints.length === 0) {
     return <p className="aysen-empty">Sin dato disponible para la participación histórica en el PIB nacional.</p>
   }
 
-  const W = 640
-  const H = 240
-  const padL = 52
-  const padR = 18
-  const padT = 22
-  const padB = 34
+  const W = 680
+  const H = 250
+  const padL = 54
+  const padR = 20
+  const padT = 26
+  const padB = 36
   const plotW = W - padL - padR
   const plotH = H - padT - padB
 
   const vals = validPoints.map(p => p.participacion_pct!)
   const minVal = Math.min(...vals)
   const maxVal = Math.max(...vals)
-  const pad = Math.max(0.08, (maxVal - minVal) * 0.25)
+  const pad = Math.max(0.06, (maxVal - minVal) * 0.28)
   const low = Math.max(0, minVal - pad)
   const high = maxVal + pad
 
   const xPos = (idx: number) => padL + (validPoints.length > 1 ? (idx / (validPoints.length - 1)) * plotW : plotW / 2)
   const yPos = (val: number) => padT + ((high - val) / Math.max(0.0001, high - low)) * plotH
 
-  const linePath = validPoints
-    .map((p, i) => `${i === 0 ? 'M' : 'L'}${xPos(i).toFixed(1)},${yPos(p.participacion_pct!).toFixed(1)}`)
-    .join(' ')
-  const areaPath = `${linePath} L${xPos(validPoints.length - 1).toFixed(1)},${(padT + plotH).toFixed(1)} L${xPos(0).toFixed(1)},${(padT + plotH).toFixed(1)} Z`
+  const pts = validPoints.map((p, i) => ({ x: xPos(i), y: yPos(p.participacion_pct!) }))
+  const linePath = buildSmoothSvgPath(pts)
+  const areaPath = `${linePath} L${pts[pts.length - 1].x.toFixed(1)},${(padT + plotH).toFixed(1)} L${pts[0].x.toFixed(1)},${(padT + plotH).toFixed(1)} Z`
 
-  const activePoint = validPoints.find(p => p.anio === selectedYear) ?? validPoints.at(-1)!
+  const focusYear = hoveredYear ?? selectedYear
+  const activePoint = validPoints.find(p => p.anio === focusYear) ?? validPoints.at(-1)!
   const ticks = [high, (high + low) / 2, low]
 
   return (
@@ -470,36 +611,58 @@ function ParticipacionChart({
         viewBox={`0 0 ${W} ${H}`}
         role="img"
         aria-label={`Participación nominal de Aysén en el PIB nacional de Chile entre ${validPoints[0].anio} y ${validPoints.at(-1)!.anio}.`}
+        onMouseLeave={() => setHoveredYear(null)}
       >
+        <defs>
+          <linearGradient id="aysenShareArea" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#0f8c6c" stopOpacity="0.24" />
+            <stop offset="100%" stopColor="#0f8c6c" stopOpacity="0.01" />
+          </linearGradient>
+        </defs>
+
         {ticks.map((tick, idx) => {
           const y = yPos(tick)
           return (
             <g key={idx}>
-              <line x1={padL} x2={W - padR} y1={y} y2={y} stroke="#dfe7e2" strokeWidth={1} />
-              <text x={padL - 8} y={y + 4} textAnchor="end" fontSize="11" fill="#4b5e59">
+              <line x1={padL} x2={W - padR} y1={y} y2={y} stroke="#e8eeea" strokeWidth={1} strokeDasharray="3 3" />
+              <text x={padL - 10} y={y + 4} textAnchor="end" fontSize="11" fill="#6b7e78">
                 {num2.format(tick)}%
               </text>
             </g>
           )
         })}
 
-        <path d={areaPath} fill="#08785e1a" />
-        <path d={linePath} fill="none" stroke="#08785e" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+        <path d={areaPath} fill="url(#aysenShareArea)" />
+        <path d={linePath} fill="none" stroke="#0b7a5e" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
 
         {validPoints.map((pt, i) => {
-          const cx = xPos(i)
-          const cy = yPos(pt.participacion_pct!)
-          const isSelected = pt.anio === activePoint.anio
-          const showLabel = validPoints.length <= 8 || i % 2 === 0 || i === validPoints.length - 1 || isSelected
+          const cx = pts[i].x
+          const cy = pts[i].y
+          const isActive = pt.anio === activePoint.anio
+          const showLabel = validPoints.length <= 8 || i % 2 === 0 || i === validPoints.length - 1 || isActive
           return (
-            <g key={pt.anio} className="aysen-svg-bar-group" onClick={() => onSelectYear(pt.anio)}>
+            <g
+              key={pt.anio}
+              className="aysen-svg-bar-group"
+              onMouseEnter={() => setHoveredYear(pt.anio)}
+              onClick={() => onSelectYear(pt.anio)}
+            >
+              {isActive && (
+                <>
+                  <line x1={cx} x2={cx} y1={padT} y2={padT + plotH} stroke="#0b7a5e44" strokeDasharray="3 3" />
+                  <circle cx={cx} cy={cy} r={8.5} fill="#0b7a5e22" />
+                  <text x={cx} y={Math.max(14, cy - 11)} textAnchor="middle" fontSize="11" fontWeight="700" fill="#07392f">
+                    {num2.format(pt.participacion_pct!)}%
+                  </text>
+                </>
+              )}
               <circle
                 cx={cx}
                 cy={cy}
-                r={isSelected ? 5.5 : 3.2}
-                fill={isSelected ? '#07392f' : '#08785e'}
+                r={isActive ? 4.6 : 2.8}
+                fill={isActive ? '#065a46' : '#0f8c6c'}
                 stroke="#fff"
-                strokeWidth={1.8}
+                strokeWidth={1.6}
               />
               {showLabel && (
                 <text
@@ -507,8 +670,8 @@ function ParticipacionChart({
                   y={H - 12}
                   textAnchor="middle"
                   fontSize="11"
-                  fontWeight={isSelected ? '700' : '500'}
-                  fill={isSelected ? '#07392f' : '#4b5e59'}
+                  fontWeight={isActive ? '700' : '500'}
+                  fill={isActive ? '#07392f' : '#5e706b'}
                 >
                   {pt.anio}
                 </text>
