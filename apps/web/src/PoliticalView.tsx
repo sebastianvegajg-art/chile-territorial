@@ -131,7 +131,7 @@ function buildPlainResumenInversionText(
   const nombresLimpios = instituciones.map(simplifyInstLabel).filter(Boolean)
   const quien =
     nombresLimpios.length > 0
-      ? ` a través de ${nombresLimpios.join(', ')}`
+      ? ` a través ${nombresLimpios[0].startsWith('Gobierno') ? 'del ' : 'de '}${nombresLimpios.join(', ')}`
       : ''
   const comp =
     variacionPct !== null
@@ -154,11 +154,11 @@ function buildPlainResumenArrastreText(
   if (porcentajePct !== null && montoMillones !== null) {
     const magnitud =
       porcentajePct >= 80
-        ? 'casi todo'
+        ? 'casi todo el dinero'
         : porcentajePct >= 50
-          ? 'más de la mitad'
-          : 'una parte'
-    return `${prefijo}, ${magnitud} del dinero en obras revisadas —el ${num1.format(porcentajePct)}%, es decir $${num0.format(montoMillones)} millones— corresponde a proyectos que ya venían contratados de años anteriores.`
+          ? 'más de la mitad del dinero'
+          : 'una parte del dinero'
+    return `${prefijo}, ${magnitud} en obras revisadas —el ${num1.format(porcentajePct)}%, es decir $${num0.format(montoMillones)} millones— corresponde a proyectos que ya venían contratados de años anteriores.`
   }
   if (montoMillones !== null) {
     return `${prefijo} se registran $${num0.format(montoMillones)} millones en obras que venían contratadas desde años anteriores.`
