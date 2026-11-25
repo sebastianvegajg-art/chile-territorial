@@ -445,6 +445,27 @@ class TestAysenPilotoEndpoints(unittest.TestCase):
             ap.aysen_presupuestos(anio=2025, comuna="13101")
         self.assertEqual(ctx.exception.status_code, 422)
 
+    def test_healthz_y_cors_despliegue_produccion(self):
+        from fastapi.testclient import TestClient
+        from apps.api.main import crear_app
+
+        with patch.dict(os.environ, {"CT_CORS_ORIGINS": "https://chile-territorial.netlify.app"}):
+            app = crear_app(demo_activa=True)
+            client = TestClient(app)
+            resp = client.get(
+                "/healthz",
+                headers={"origin": "https://chile-territorial.netlify.app"},
+            )
+            self.assertEqual(resp.status_code, 200)
+            payload = resp.json()
+            self.assertEqual(payload["estado"], "ok")
+            self.assertEqual(payload["servicio"], "chile-territorial-api")
+            self.assertIn("datos_publicados", payload)
+            self.assertEqual(
+                resp.headers.get("access-control-allow-origin"),
+                "https://chile-territorial.netlify.app",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
