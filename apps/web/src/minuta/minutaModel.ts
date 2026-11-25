@@ -325,17 +325,24 @@ export function generarRespuestaCotidiana(draft: MinutaDraft): string {
   // Caso 2: Pregunta específica de gasto corriente institucional
   if (draft.preguntaId === 'gasto_corriente_institucion') {
     const pctCifra = disponibles.find(c => c.unidad.includes('%') && c.etiqueta.toLowerCase().includes('corriente'))
-    const ejecCifra = disponibles.find(c => c.etiqueta.toLowerCase().includes('ejecutado'))
-    const corrCifra = disponibles.find(c => c.etiqueta.toLowerCase().includes('corriente') && !c.unidad.includes('%'))
+    const ejecCifra = disponibles.find(
+      c => c.id !== pctCifra?.id && !c.unidad.includes('%') && c.etiqueta.toLowerCase().includes('ejecutado'),
+    )
+    const corrCifra = disponibles.find(
+      c => c.id !== pctCifra?.id && !c.unidad.includes('%') && c.etiqueta.toLowerCase().includes('corriente'),
+    )
     if (pctCifra) {
-      const pesos = pctCifra.subvalor || pctCifra.valorTexto
+      const pesos = (pctCifra.subvalor || `${pctCifra.valorTexto} de lo ejecutado`).replace(/\s+ejecutados$/i, '')
+      const instConArticulo = pctCifra.institucion.startsWith('Municipalidad') || pctCifra.institucion.startsWith('Dirección')
+        ? `la ${pctCifra.institucion}`
+        : `el ${pctCifra.institucion}`
       const detalleMontos =
         corrCifra && ejecCifra
-          ? ` (${corrCifra.valorTexto} sobre ${ejecCifra.valorTexto} ejecutados)`
+          ? ` (${corrCifra.valorTexto} sobre ${ejecCifra.valorTexto} devengados)`
           : pctCifra.baseCalculo
             ? ` (${pctCifra.baseCalculo})`
             : ''
-      const linea1 = `En ${pctCifra.periodo}, ${pesos} ejecutados por ${pctCifra.institucion} correspondieron a gasto corriente${detalleMontos}.`
+      const linea1 = `En ${pctCifra.periodo}, ${pesos} ejecutados por ${instConArticulo} correspondieron a gasto corriente${detalleMontos}.`
       const notaExtra =
         faltantes.length > 0
           ? ` Falta antecedente para ${faltantes[0].etiqueta.toLowerCase()}: ${faltantes[0].antecedenteFaltante || 'dato oficial pendiente'}.`
@@ -452,20 +459,23 @@ export function analizarExtensionUnaPagina(
     )
   }
 
-  // Estimación estructural en "unidades de línea" (Carta vertical útil ≈ 46 líneas cómodas)
+  // Estimación estructural en "unidades de línea" (Carta vertical útil ≈ 46 líneas cómodas en 3 columnas)
   const tituloLineas = Math.max(1, Math.ceil((draft.titulo.length || 40) / 62))
   const respuestaLineas = Math.max(2, Math.ceil((draft.respuesta.length || 120) / 86))
-  const cifrasLineas = draft.cifras.reduce((acc, c) => {
-    const baseExtra = c.baseCalculo ? 1.5 : 0
-    const missingExtra = !c.disponible ? 1.2 : 0
-    return acc + 4.8 + baseExtra + missingExtra
+  // En impresión Carta vertical hasta 3 cifras van en 1 fila de 3 columnas (no apiladas)
+  const filasCifras = draft.cifras.length === 0 ? 0 : Math.ceil(draft.cifras.length / 3)
+  const maxCardLineas = draft.cifras.reduce((mx, c) => {
+    const baseExtra = c.baseCalculo ? 2 : 0
+    const missingExtra = !c.disponible ? 1.5 : 0
+    return Math.max(mx, 8 + baseExtra + missingExtra)
   }, 0)
-  const obraLineas = draft.obraEjemplo ? 6.5 : 0
+  const cifrasLineas = filasCifras * maxCardLineas
+  const obraLineas = draft.obraEjemplo ? 7.5 : 0
   const fuentesLineas = 2 + referencias.length * 1.9
   const estimacionLineas = Math.round(6 + tituloLineas + respuestaLineas + cifrasLineas + obraLineas + fuentesLineas)
 
-  // Carta vertical imprimible (11in - ~1in márgenes = ~9.8in ≈ 940px a 96dpi)
-  const heightOverflow = typeof measuredHeightPx === 'number' && measuredHeightPx > 955
+  // Carta vertical imprimible (11in - 1in márgenes = ~10in; vista digital tiene ~15% más aire vertical)
+  const heightOverflow = typeof measuredHeightPx === 'number' && measuredHeightPx > 1060
 
   if (heightOverflow && sugerencias.length === 0) {
     if (draft.obraEjemplo && draft.cifras.length >= 3) {

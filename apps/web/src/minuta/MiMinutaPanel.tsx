@@ -412,7 +412,7 @@ export function MiMinutaPanel({
     setIncludeObraSugerida(Boolean(sugerencias.obraSugerida))
   }, [sugerencias])
 
-  // Medir alto de la hoja en Vista Previa para el aviso de extensión de 1 página
+  // Medir alto de la hoja en Vista Previa solo a ancho de escritorio equivalente a Carta (en móvil las columnas se apilan solo para lectura táctil)
   useEffect(() => {
     if (!open || mode !== 'vista_previa') {
       setMeasuredHeight(null)
@@ -420,7 +420,13 @@ export function MiMinutaPanel({
     }
     const el = previewSheetRef.current
     if (!el) return
-    const measure = () => setMeasuredHeight(el.offsetHeight)
+    const measure = () => {
+      if (el.offsetWidth >= 640) {
+        setMeasuredHeight(el.offsetHeight)
+      } else {
+        setMeasuredHeight(null)
+      }
+    }
     measure()
     if (typeof ResizeObserver !== 'undefined') {
       const ro = new ResizeObserver(measure)
