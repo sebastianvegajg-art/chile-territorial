@@ -82,7 +82,88 @@ const num2 = new Intl.NumberFormat('es-CL', { minimumFractionDigits: 2, maximumF
 
 function fmtMillions(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return 'Sin dato disponible'
-  return `$ ${num0.format(value)} MM`
+  return `$${num0.format(value)} millones`
+}
+
+function fmtMillionsNumberOnly(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return 'Sin dato disponible'
+  return `$${num0.format(value)}`
+}
+
+/** Limpia siglas presupuestarias como "(Subt. 29–31 y 33 / DIPRES)" para mostrar nombres comprensibles */
+function simplifyInstLabel(raw: string): string {
+  return raw
+    .replace(/\s*\([^)]*(?:Subt\.|DIPRES|SINIM|BIP)[^)]*\)/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function buildPlainResumenEcoText(
+  anio: number,
+  aysenPct: number | null,
+  chilePct: number | null,
+): string | null {
+  if (aysenPct === null) return null
+  const verbo = aysenPct > 0 ? 'creció' : aysenPct < 0 ? 'cayó' : 'se mantuvo estable en'
+  const absAysen = num1.format(Math.abs(aysenPct))
+  if (chilePct === null) {
+    return `En ${anio}, la economía de Aysén ${verbo} ${absAysen}% descontando la inflación.`
+  }
+  const diff = aysenPct - chilePct
+  const chileTexto = `${chilePct >= 0 ? '' : '−'}${num1.format(Math.abs(chilePct))}%`
+  const comparacion =
+    Math.abs(diff) < 0.3
+      ? `un ritmo muy parecido al promedio de Chile (${chileTexto})`
+      : diff > 0
+        ? `por sobre el ${chileTexto} del promedio de Chile (${num1.format(Math.abs(diff))} puntos más)`
+        : `por debajo del ${chileTexto} del promedio de Chile (${num1.format(Math.abs(diff))} puntos menos)`
+  return `En ${anio}, la economía de Aysén ${verbo} ${absAysen}% descontando la inflación, ${comparacion}.`
+}
+
+function buildPlainResumenInversionText(
+  anio: number,
+  montoMillones: number | null,
+  variacionPct: number | null,
+  instituciones: string[],
+  enCurso: boolean,
+): string | null {
+  if (montoMillones === null) return null
+  const nombresLimpios = instituciones.map(simplifyInstLabel).filter(Boolean)
+  const quien =
+    nombresLimpios.length > 0
+      ? ` a través de ${nombresLimpios.join(', ')}`
+      : ''
+  const comp =
+    variacionPct !== null
+      ? variacionPct >= 0
+        ? ` (${num1.format(variacionPct)}% más que el año anterior)`
+        : ` (${num1.format(Math.abs(variacionPct))}% menos que el año anterior)`
+      : ''
+  const periodoTxt = enCurso ? `En lo que va de ${anio}` : `Durante ${anio}`
+  return `${periodoTxt} se invirtieron $${num0.format(montoMillones)} millones de pesos en obras y proyectos de desarrollo en Aysén${comp}${quien}.`
+}
+
+function buildPlainResumenArrastreText(
+  anio: number,
+  porcentajePct: number | null,
+  montoMillones: number | null,
+  enCurso: boolean,
+): string | null {
+  if (porcentajePct === null && montoMillones === null) return null
+  const prefijo = enCurso ? `En lo que va de ${anio}` : `En ${anio}`
+  if (porcentajePct !== null && montoMillones !== null) {
+    const magnitud =
+      porcentajePct >= 80
+        ? 'casi todo'
+        : porcentajePct >= 50
+          ? 'más de la mitad'
+          : 'una parte'
+    return `${prefijo}, ${magnitud} del dinero en obras revisadas —el ${num1.format(porcentajePct)}%, es decir $${num0.format(montoMillones)} millones— corresponde a proyectos que ya venían contratados de años anteriores.`
+  }
+  if (montoMillones !== null) {
+    return `${prefijo} se registran $${num0.format(montoMillones)} millones en obras que venían contratadas desde años anteriores.`
+  }
+  return `${prefijo}, el ${num1.format(porcentajePct!)}% de las obras revisadas ya venía comprometido desde años anteriores.`
 }
 
 function fmtPct(value: number | null | undefined, signed = false, decimals: 1 | 2 = 1): string {
@@ -1611,13 +1692,13 @@ export function PoliticalView() {
           <div className="aysen-question-head">
             <h2>¿Qué pasó en Aysén durante {anio}?</h2>
             <p className="subtle">
-              Tres respuestas directas con datos oficiales verificables para entender actividad económica, inversión y compromisos heredados.
+              Tres ideas simples, con respaldo oficial, para entender cómo le fue a la economía, cuánto se invirtió y qué parte ya venía comprometida de antes.
             </p>
           </div>
 
           {showRegionalPibHint && (
             <p className="aysen-hint-bar" role="note">
-              Comuna seleccionada para presupuestos: <strong>{getComunaNombre(comunaActivaEnCabecera)}</strong>. El PIB se mide únicamente a escala regional (Región de Aysén).
+              Comuna elegida para presupuestos: <strong>{getComunaNombre(comunaActivaEnCabecera)}</strong>. El crecimiento económico se mide para toda la Región de Aysén.
             </p>
           )}
 
@@ -1639,200 +1720,267 @@ export function PoliticalView() {
 
               <div className="aysen-summary-grid">
                 {/* Tarjeta 1: Evolución económica */}
-                <article className="aysen-card aysen-summary-card">
-                  <div className="aysen-card-top">
-                    <span className="aysen-card-kicker">1 · Evolución económica</span>
-                    <span className="aysen-territory-tag is-regional">Región de Aysén</span>
-                  </div>
+                {(() => {
+                  const eco = resumenState.data!.evolucion_economica
+                  const plainEco =
+                    buildPlainResumenEcoText(anio, eco.crecimiento_real_pct, eco.crecimiento_chile_pct) ??
+                    eco.frase_radial
+                  return (
+                    <article className="aysen-card aysen-summary-card">
+                      <div className="aysen-card-top">
+                        <span className="aysen-card-kicker">1 · ¿Cómo le fue a la economía?</span>
+                        <span className="aysen-territory-tag is-regional">Región de Aysén</span>
+                      </div>
 
-                  <p className={`aysen-big-figure${!resumenState.data.evolucion_economica.disponible ? ' is-missing' : ''}`}>
-                    {resumenState.data.evolucion_economica.crecimiento_real_pct !== null
-                      ? fmtPct(resumenState.data.evolucion_economica.crecimiento_real_pct, true)
-                      : 'Sin dato disponible'}
-                  </p>
-                  <p className="aysen-figure-caption">
-                    Crecimiento real del PIB regional ({anio})
-                    {resumenState.data.evolucion_economica.crecimiento_chile_pct !== null && (
-                      <> · Chile: <strong>{fmtPct(resumenState.data.evolucion_economica.crecimiento_chile_pct, true)}</strong></>
-                    )}
-                  </p>
+                      <p
+                        className={`aysen-big-figure${!eco.disponible ? ' is-missing' : eco.crecimiento_real_pct !== null && eco.crecimiento_real_pct < 0 ? ' is-neg' : ' is-pos'}`}
+                      >
+                        {eco.crecimiento_real_pct !== null
+                          ? fmtPct(eco.crecimiento_real_pct, true)
+                          : 'Sin dato disponible'}
+                      </p>
+                      <p className="aysen-figure-caption">
+                        Crecimiento de Aysén en {anio}
+                        {eco.crecimiento_chile_pct !== null && (
+                          <> · Promedio de Chile: <strong>{fmtPct(eco.crecimiento_chile_pct, true)}</strong></>
+                        )}
+                      </p>
 
-                  {resumenState.data.evolucion_economica.frase_radial ? (
-                    <blockquote className="aysen-radio-quote">
-                      «{resumenState.data.evolucion_economica.frase_radial}»
-                    </blockquote>
-                  ) : resumenState.data.evolucion_economica.sin_dato_motivo ? (
-                    <p className="subtle">{resumenState.data.evolucion_economica.sin_dato_motivo}</p>
-                  ) : null}
+                      {plainEco ? (
+                        <blockquote className="aysen-radio-quote">
+                          {plainEco}
+                        </blockquote>
+                      ) : eco.sin_dato_motivo ? (
+                        <p className="subtle">{eco.sin_dato_motivo}</p>
+                      ) : null}
 
-                  <dl className="aysen-inline-meta">
-                    <div>
-                      <dt>Período</dt>
-                      <dd>{resumenState.data.evolucion_economica.periodo || String(anio)}</dd>
-                    </div>
-                    <div>
-                      <dt>Unidad</dt>
-                      <dd>{resumenState.data.evolucion_economica.unidad || 'Variación real anual (%)'}</dd>
-                    </div>
-                    <div>
-                      <dt>Cobertura</dt>
-                      <dd>{resumenState.data.evolucion_economica.cobertura || 'Región de Aysén (BCCh)'}</dd>
-                    </div>
-                  </dl>
+                      <p className="aysen-plain-context">
+                        Dato regional oficial del Banco Central (sin inflación).
+                      </p>
 
-                  <div className="aysen-card-actions">
-                    <button
-                      type="button"
-                      className="aysen-cta-btn"
-                      onClick={() => switchTab('economia')}
-                    >
-                      Ver en Economía <span aria-hidden="true">→</span>
-                    </button>
-                    <AddToMinutaButton
-                      saved={isCifraInMinuta(`resumen-eco-${resumenState.data.anio}`)}
-                      onClick={() => handleToggleMinutaCifra(cifraFromResumenEconomia(resumenState.data!))}
-                    />
-                    <SourceLink fuente={resumenState.data.evolucion_economica.fuente} />
-                  </div>
-                </article>
+                      <details className="aysen-meta-details">
+                        <summary>Ver ficha técnica</summary>
+                        <dl className="aysen-inline-meta">
+                          <div>
+                            <dt>Período</dt>
+                            <dd>{eco.periodo || String(anio)}</dd>
+                          </div>
+                          <div>
+                            <dt>Unidad</dt>
+                            <dd>{eco.unidad || 'Variación real anual (%)'}</dd>
+                          </div>
+                          <div>
+                            <dt>Cobertura</dt>
+                            <dd>{eco.cobertura || 'Región de Aysén (BCCh)'}</dd>
+                          </div>
+                        </dl>
+                      </details>
+
+                      <div className="aysen-card-actions">
+                        <button
+                          type="button"
+                          className="aysen-cta-btn"
+                          onClick={() => switchTab('economia')}
+                        >
+                          Ver en Economía <span aria-hidden="true">→</span>
+                        </button>
+                        <AddToMinutaButton
+                          saved={isCifraInMinuta(`resumen-eco-${resumenState.data!.anio}`)}
+                          onClick={() => handleToggleMinutaCifra(cifraFromResumenEconomia(resumenState.data!))}
+                        />
+                        <SourceLink fuente={eco.fuente} />
+                      </div>
+                    </article>
+                  )
+                })()}
 
                 {/* Tarjeta 2: Inversión pública registrada */}
-                <article className="aysen-card aysen-summary-card">
-                  <div className="aysen-card-top">
-                    <span className="aysen-card-kicker">2 · Inversión pública</span>
-                    {resumenState.data.inversion_publica.variacion_mismo_periodo_pct !== null && (
-                      <span className="aysen-pill-accent">
-                        {fmtPct(resumenState.data.inversion_publica.variacion_mismo_periodo_pct, true)} vs mismo período
-                      </span>
-                    )}
-                  </div>
+                {(() => {
+                  const inv = resumenState.data!.inversion_publica
+                  const cleanInsts = inv.instituciones_cubiertas.map(simplifyInstLabel).filter(Boolean)
+                  const plainInv =
+                    buildPlainResumenInversionText(
+                      anio,
+                      inv.monto_millones,
+                      inv.variacion_mismo_periodo_pct,
+                      inv.instituciones_cubiertas,
+                      resumenState.data!.en_curso,
+                    ) ?? inv.frase_radial
+                  return (
+                    <article className="aysen-card aysen-summary-card">
+                      <div className="aysen-card-top">
+                        <span className="aysen-card-kicker">2 · ¿Cuánto se invirtió?</span>
+                        {inv.variacion_mismo_periodo_pct !== null && (
+                          <span className="aysen-pill-accent">
+                            {inv.variacion_mismo_periodo_pct >= 0
+                              ? `+${num1.format(inv.variacion_mismo_periodo_pct)}% más que en ${anio - 1}`
+                              : `−${num1.format(Math.abs(inv.variacion_mismo_periodo_pct))}% menos que en ${anio - 1}`}
+                          </span>
+                        )}
+                      </div>
 
-                  <p className={`aysen-big-figure${!resumenState.data.inversion_publica.disponible ? ' is-missing' : ''}`}>
-                    {resumenState.data.inversion_publica.monto_millones !== null
-                      ? fmtMillions(resumenState.data.inversion_publica.monto_millones)
-                      : 'Sin dato disponible'}
-                  </p>
-                  <p className="aysen-figure-caption">
-                    {resumenState.data.inversion_publica.variacion_mismo_periodo_pct !== null &&
-                    resumenState.data.inversion_publica.periodo_comparado
-                      ? resumenState.data.inversion_publica.periodo_comparado
-                      : `Ejecución de inversión y capital registrada (${anio})`}
-                  </p>
+                      <p className={`aysen-big-figure${!inv.disponible ? ' is-missing' : ''}`}>
+                        {inv.monto_millones !== null ? (
+                          <>
+                            <span>{fmtMillionsNumberOnly(inv.monto_millones)}</span>
+                            <span className="aysen-big-unit">millones</span>
+                          </>
+                        ) : (
+                          'Sin dato disponible'
+                        )}
+                      </p>
+                      <p className="aysen-figure-caption">
+                        {inv.monto_millones !== null
+                          ? `Pesos invertidos en obras y proyectos durante ${anio}`
+                          : `Inversión pública registrada en ${anio}`}
+                      </p>
 
-                  {resumenState.data.inversion_publica.instituciones_cubiertas.length > 0 && (
-                    <div className="aysen-covered-block">
-                      <span className="aysen-covered-label">Instituciones cubiertas:</span>
-                      <ul className="aysen-chip-list">
-                        {resumenState.data.inversion_publica.instituciones_cubiertas.map(inst => (
-                          <li key={inst}>{inst}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                      {cleanInsts.length > 0 && (
+                        <div className="aysen-covered-block">
+                          <span className="aysen-covered-label">Quién invirtió estos recursos:</span>
+                          <ul className="aysen-chip-list">
+                            {cleanInsts.map(inst => (
+                              <li key={inst}>{inst}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
 
-                  {resumenState.data.inversion_publica.frase_radial ? (
-                    <blockquote className="aysen-radio-quote">
-                      «{resumenState.data.inversion_publica.frase_radial}»
-                    </blockquote>
-                  ) : resumenState.data.inversion_publica.sin_dato_motivo ? (
-                    <p className="subtle">{resumenState.data.inversion_publica.sin_dato_motivo}</p>
-                  ) : null}
+                      {plainInv ? (
+                        <blockquote className="aysen-radio-quote">
+                          {plainInv}
+                        </blockquote>
+                      ) : inv.sin_dato_motivo ? (
+                        <p className="subtle">{inv.sin_dato_motivo}</p>
+                      ) : null}
 
-                  <dl className="aysen-inline-meta">
-                    <div>
-                      <dt>Período</dt>
-                      <dd>{resumenState.data.inversion_publica.periodo || String(anio)}</dd>
-                    </div>
-                    <div>
-                      <dt>Unidad</dt>
-                      <dd>{resumenState.data.inversion_publica.unidad || 'Millones de pesos ($ MM)'}</dd>
-                    </div>
-                    <div>
-                      <dt>Cobertura</dt>
-                      <dd>{resumenState.data.inversion_publica.cobertura || 'Instituciones con corte oficial'}</dd>
-                    </div>
-                  </dl>
+                      <p className="aysen-plain-context">
+                        Cifras en millones de pesos chilenos con respaldo oficial de DIPRES.
+                      </p>
 
-                  <div className="aysen-card-actions">
-                    <button
-                      type="button"
-                      className="aysen-cta-btn"
-                      onClick={() => switchTab('presupuestos')}
-                    >
-                      Ver en Presupuestos <span aria-hidden="true">→</span>
-                    </button>
-                    <AddToMinutaButton
-                      saved={isCifraInMinuta(`resumen-inv-${resumenState.data.anio}-${resumenState.data.comuna_codigo || 'reg'}`)}
-                      onClick={() => handleToggleMinutaCifra(cifraFromResumenInversion(resumenState.data!))}
-                    />
-                    <SourceLink fuente={resumenState.data.inversion_publica.fuente} />
-                  </div>
-                </article>
+                      <details className="aysen-meta-details">
+                        <summary>Ver ficha técnica</summary>
+                        <dl className="aysen-inline-meta">
+                          <div>
+                            <dt>Período</dt>
+                            <dd>{inv.periodo || String(anio)}</dd>
+                          </div>
+                          <div>
+                            <dt>Unidad</dt>
+                            <dd>{inv.unidad || 'Millones de pesos'}</dd>
+                          </div>
+                          <div>
+                            <dt>Cobertura</dt>
+                            <dd>{inv.cobertura || 'Instituciones con corte oficial'}</dd>
+                          </div>
+                        </dl>
+                      </details>
+
+                      <div className="aysen-card-actions">
+                        <button
+                          type="button"
+                          className="aysen-cta-btn"
+                          onClick={() => switchTab('presupuestos')}
+                        >
+                          Ver en Presupuestos <span aria-hidden="true">→</span>
+                        </button>
+                        <AddToMinutaButton
+                          saved={isCifraInMinuta(`resumen-inv-${resumenState.data!.anio}-${resumenState.data!.comuna_codigo || 'reg'}`)}
+                          onClick={() => handleToggleMinutaCifra(cifraFromResumenInversion(resumenState.data!))}
+                        />
+                        <SourceLink fuente={inv.fuente} />
+                      </div>
+                    </article>
+                  )
+                })()}
 
                 {/* Tarjeta 3: Compromisos de años anteriores (arrastre) */}
-                <article className="aysen-card aysen-summary-card">
-                  <div className="aysen-card-top">
-                    <span className="aysen-card-kicker">3 · Arrastre comprometido</span>
-                    <span className="aysen-arrastre-badge is-arrastre">Arrastre</span>
-                  </div>
+                {(() => {
+                  const arr = resumenState.data!.arrastre
+                  const plainArr =
+                    buildPlainResumenArrastreText(
+                      anio,
+                      arr.porcentaje_pct,
+                      arr.monto_millones,
+                      resumenState.data!.en_curso,
+                    ) ?? arr.frase_radial
+                  return (
+                    <article className="aysen-card aysen-summary-card">
+                      <div className="aysen-card-top">
+                        <span className="aysen-card-kicker">3 · ¿Cuánto venía de antes?</span>
+                        <span className="aysen-arrastre-badge is-arrastre">Obras anteriores</span>
+                      </div>
 
-                  <p className={`aysen-big-figure${!resumenState.data.arrastre.disponible ? ' is-missing' : ''}`}>
-                    {resumenState.data.arrastre.porcentaje_pct !== null
-                      ? fmtPct(resumenState.data.arrastre.porcentaje_pct)
-                      : resumenState.data.arrastre.monto_millones !== null
-                        ? fmtMillions(resumenState.data.arrastre.monto_millones)
-                        : 'Sin dato disponible'}
-                  </p>
-                  <p className="aysen-figure-caption">
-                    {resumenState.data.arrastre.monto_millones !== null && resumenState.data.arrastre.porcentaje_pct !== null
-                      ? `Equivale a ${fmtMillions(resumenState.data.arrastre.monto_millones)}`
-                      : 'Arrastre documentado en obras de inversión'}
-                    {resumenState.data.arrastre.base_calculo ? ` · ${resumenState.data.arrastre.base_calculo}` : ''}
-                  </p>
+                      <p className={`aysen-big-figure${!arr.disponible ? ' is-missing' : ''}`}>
+                        {arr.porcentaje_pct !== null ? (
+                          fmtPct(arr.porcentaje_pct)
+                        ) : arr.monto_millones !== null ? (
+                          <>
+                            <span>{fmtMillionsNumberOnly(arr.monto_millones)}</span>
+                            <span className="aysen-big-unit">millones</span>
+                          </>
+                        ) : (
+                          'Sin dato disponible'
+                        )}
+                      </p>
+                      <p className="aysen-figure-caption">
+                        {arr.monto_millones !== null && arr.porcentaje_pct !== null
+                          ? <>Equivale a <strong>${num0.format(arr.monto_millones)} millones</strong> ya comprometidos</>
+                          : 'Dinero comprometido en obras contratadas en años previos'}
+                      </p>
 
-                  {resumenState.data.arrastre.frase_radial ? (
-                    <blockquote className="aysen-radio-quote">
-                      «{resumenState.data.arrastre.frase_radial}»
-                    </blockquote>
-                  ) : resumenState.data.arrastre.sin_dato_motivo ? (
-                    <p className="subtle">{resumenState.data.arrastre.sin_dato_motivo}</p>
-                  ) : null}
+                      {plainArr ? (
+                        <blockquote className="aysen-radio-quote">
+                          {plainArr}
+                        </blockquote>
+                      ) : arr.sin_dato_motivo ? (
+                        <p className="subtle">{arr.sin_dato_motivo}</p>
+                      ) : null}
 
-                  <dl className="aysen-inline-meta">
-                    <div>
-                      <dt>Período</dt>
-                      <dd>{resumenState.data.arrastre.periodo || String(anio)}</dd>
-                    </div>
-                    <div>
-                      <dt>Unidad</dt>
-                      <dd>{resumenState.data.arrastre.unidad || '% y millones CLP'}</dd>
-                    </div>
-                    <div>
-                      <dt>Cobertura</dt>
-                      <dd>
-                        {resumenState.data.arrastre.cobertura ||
-                          (resumenState.data.arrastre.total_proyectos_evaluados !== null
-                            ? `${resumenState.data.arrastre.total_proyectos_evaluados} obras evaluadas`
-                            : 'Registro de contratos con fecha verificada')}
-                      </dd>
-                    </div>
-                  </dl>
+                      <p className="aysen-plain-context">
+                        Mide qué parte de las obras de {anio} ya estaba contratada de antes (arrastre).
+                      </p>
 
-                  <div className="aysen-card-actions">
-                    <button
-                      type="button"
-                      className="aysen-cta-btn"
-                      onClick={() => switchTab('proyectos')}
-                    >
-                      Ver en Proyectos <span aria-hidden="true">→</span>
-                    </button>
-                    <AddToMinutaButton
-                      saved={isCifraInMinuta(`resumen-arrastre-${resumenState.data.anio}`)}
-                      onClick={() => handleToggleMinutaCifra(cifraFromResumenArrastre(resumenState.data!))}
-                    />
-                    <SourceLink fuente={resumenState.data.arrastre.fuente} />
-                  </div>
-                </article>
+                      <details className="aysen-meta-details">
+                        <summary>Ver ficha técnica</summary>
+                        <dl className="aysen-inline-meta">
+                          <div>
+                            <dt>Período</dt>
+                            <dd>{arr.periodo || String(anio)}</dd>
+                          </div>
+                          <div>
+                            <dt>Base</dt>
+                            <dd>{arr.base_calculo || 'Porcentaje sobre obras con contrato vigente'}</dd>
+                          </div>
+                          <div>
+                            <dt>Cobertura</dt>
+                            <dd>
+                              {arr.cobertura ||
+                                (arr.total_proyectos_evaluados !== null
+                                  ? `${arr.total_proyectos_evaluados} obras evaluadas`
+                                  : 'Contratos con fecha verificada')}
+                            </dd>
+                          </div>
+                        </dl>
+                      </details>
+
+                      <div className="aysen-card-actions">
+                        <button
+                          type="button"
+                          className="aysen-cta-btn"
+                          onClick={() => switchTab('proyectos')}
+                        >
+                          Ver en Proyectos <span aria-hidden="true">→</span>
+                        </button>
+                        <AddToMinutaButton
+                          saved={isCifraInMinuta(`resumen-arrastre-${resumenState.data!.anio}`)}
+                          onClick={() => handleToggleMinutaCifra(cifraFromResumenArrastre(resumenState.data!))}
+                        />
+                        <SourceLink fuente={arr.fuente} />
+                      </div>
+                    </article>
+                  )
+                })()}
               </div>
             </>
           )}
