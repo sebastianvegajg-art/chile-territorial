@@ -4938,3 +4938,99 @@ button.proy-billboard.is-selected {
     text-align: right;
   }
 }
+
+
+/* ============================================================
+   IDENTIDAD VISUAL · CONFIASUR CONSULTORES (HEADER, FOOTER, MINUTA)
+============================================================ */
+
+.brand-confiasur {
+  gap: .75rem;
+  align-items: center;
+}
+.brand-logo-img {
+  display: block;
+  height: 34px;
+  width: auto;
+  object-fit: contain;
+}
+.brand-divider {
+  display: none;
+  width: 1px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.28);
+}
+.brand-observatory {
+  display: none;
+  font-size: .88rem;
+  font-weight: 450;
+  color: #d6ebe3;
+  letter-spacing: .01em;
+}
+.brand-observatory strong {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+@media (min-width: 560px) {
+  .brand-logo-img {
+    height: 36px;
+  }
+  .brand-divider,
+  .brand-observatory {
+    display: inline-block;
+  }
+}
+
+.footer-confiasur {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 24px;
+  padding-block: 22px 30px;
+}
+.footer-brand-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.footer-logo-img {
+  display: block;
+  height: 32px;
+  width: auto;
+  object-fit: contain;
+}
+.footer-tagline {
+  font-size: .7rem;
+  letter-spacing: .16em;
+  color: #3d5c56;
+  font-weight: 600;
+}
+.footer-contact-block {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  font-size: .84rem;
+  color: #36524c;
+}
+
+.minuta-sheet-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.minuta-sheet-logo {
+  display: block;
+  height: 21px;
+  width: auto;
+  object-fit: contain;
+}
+
+@media print {
+  .minuta-sheet-logo {
+    filter: grayscale(100%) contrast(150%);
+    height: 19px !important;
+  }
+}

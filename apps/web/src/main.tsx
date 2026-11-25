@@ -320,9 +320,16 @@ function App() {
       <a className="skip-link" href="#contenido">Ir al contenido principal</a>
       <header className="masthead">
         <div className="masthead-inner wrap">
-          <a className="brand" href="#comparar" aria-label="Chile Territorial, inicio">
-            <span className="brand-mark" aria-hidden="true">▥</span>
-            <span>Chile <strong>Territorial</strong></span>
+          <a className="brand brand-confiasur" href="#politica" aria-label="CONFIASUR Consultores · Observatorio Territorial">
+            <img
+              src="/brand/confiasur-logo-light.png"
+              alt="CONFIASUR Consultores"
+              className="brand-logo-img"
+              width={183}
+              height={36}
+            />
+            <span className="brand-divider" aria-hidden="true" />
+            <span className="brand-observatory">Observatorio <strong>Territorial</strong></span>
           </a>
           <div className="masthead-right">
             <div className="mode-switch" role="group" aria-label="Modo de lectura">
@@ -725,7 +732,24 @@ function App() {
         )}
       </main>
 
-      <footer className="wrap footer"><strong>Chile Territorial</strong><a href="#metodologia">Metodología del PIB regional</a></footer>
+      <footer className="wrap footer footer-confiasur">
+        <div className="footer-brand-block">
+          <img
+            src="/brand/confiasur-logo-dark.png"
+            alt="CONFIASUR Consultores"
+            className="footer-logo-img"
+            width={168}
+            height={33}
+          />
+          <span className="footer-tagline">INTEGRIDAD · CONFIANZA · TERRITORIO</span>
+        </div>
+        <div className="footer-contact-block">
+          <a href="mailto:Contacto@confiasur.com">Contacto@confiasur.com</a>
+          <span>@confiasur</span>
+          <span>Región de Aysén · Patagonia, Chile</span>
+          <a href="#metodologia">Metodología y fuentes</a>
+        </div>
+      </footer>
       <dialog ref={dialog} onClose={() => provenanceRequest.current?.abort()} aria-labelledby="detail-title">
         <h2 id="detail-title">Procedencia</h2>
         {detail?.error ? <p role="alert">{detail.error}</p> : !detail?.row ? <p role="status">Cargando detalle…</p> :

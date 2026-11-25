@@ -93,7 +93,16 @@ export function MinutaSheet({
     >
       <header className="minuta-sheet-header">
         <div className="minuta-sheet-brand">
-          <span className="minuta-sheet-kicker">Chile Territorial · Observatorio de Aysén</span>
+          <span className="minuta-sheet-kicker">
+            <img
+              src="/brand/confiasur-logo-dark.png"
+              alt="CONFIASUR Consultores"
+              className="minuta-sheet-logo"
+              width={118}
+              height={23}
+            />
+            <span>Observatorio de Aysén</span>
+          </span>
           <span className="minuta-sheet-date">Minuta de 1 página · {fechaGeneracion}</span>
         </div>
         <h2 className="minuta-sheet-title">{tituloVisible}</h2>
