@@ -34,6 +34,7 @@ RUTA_PIB_API_DEFECTO = RAIZ_REPO / "data" / "published" / "pib-bde-api.json"
 RUTA_PIB_PUBLICO_DEFECTO = RAIZ_REPO / "data" / "published" / "pib-bde-publico.json"
 RUTA_SECTORIAL_DEFECTO = RAIZ_REPO / "data" / "published" / "pib-sectorial-16-regiones.json"
 RUTA_PROYECTOS_MOP_DEFECTO = RAIZ_REPO / "data" / "published" / "proyectos-mop-aysen.json"
+RUTA_SINIM_HISTORICO_DEFECTO = RAIZ_REPO / "data" / "published" / "sinim-aysen-historico.json"
 RUTA_SINIM_OFICIAL_DEFECTO = RAIZ_REPO / "data" / "published" / "sinim-aysen-oficial.json"
 RUTA_SINIM_IMPORTADO_DEFECTO = RAIZ_REPO / "data" / "published" / "sinim-aysen-importado.json"
 
@@ -207,7 +208,11 @@ def _ruta_proyectos_mop() -> Path:
 
 def _ruta_sinim_oficial() -> Path:
     personalizada = (os.getenv("CT_SINIM_OFICIAL_PATH") or "").strip()
-    return Path(personalizada) if personalizada else RUTA_SINIM_OFICIAL_DEFECTO
+    if personalizada:
+        return Path(personalizada)
+    if RUTA_SINIM_HISTORICO_DEFECTO.is_file():
+        return RUTA_SINIM_HISTORICO_DEFECTO
+    return RUTA_SINIM_OFICIAL_DEFECTO
 
 
 def _ruta_sinim_importado() -> Path:
@@ -1078,6 +1083,22 @@ def _construir_billetera_municipal(
         ("subt_22_bienes_servicios", "subt_22", "subtitulo_22", "bienes_y_servicios"),
         divisor,
     )
+    subt_24 = _obtener_monto_sinim_millones(
+        registro,
+        (
+            "transferencias_corrientes_sub24_millones",
+            "subt_24_transferencias_corrientes_millones",
+            "subt_24_millones",
+        ),
+        ("transferencias_corrientes_sub24", "subt_24"),
+        divisor,
+    )
+    tasa_ejec = _a_decimal_flexible(registro.get("tasa_ejecucion_pct"))
+    if tasa_ejec is None and devengado is not None and vigente is not None and vigente > _CERO:
+        tasa_ejec = _ratio_pct(devengado, vigente)
+    inv_pct = _a_decimal_flexible(registro.get("inversion_pct"))
+    if inv_pct is None and gasto_inv is not None and devengado is not None and devengado > _CERO:
+        inv_pct = _ratio_pct(gasto_inv, devengado)
 
     gasto_corriente = _obtener_monto_sinim_millones(
         registro,
@@ -1164,6 +1185,7 @@ def _construir_billetera_municipal(
             else "SINIM/BEP informa ejecución devengada real; no publica Ley Inicial ni Presupuesto Vigente."
         ),
         "devengado_bep_millones": _fmt(devengado, 3),
+        "tasa_ejecucion_pct": _fmt(tasa_ejec, 2),
         "ingresos_totales_millones": _fmt(ingresos, 3),
         "gasto_corriente_observable_millones": _fmt(gasto_corriente, 3),
         "gasto_corriente_observable_pct": _fmt(gasto_corriente_pct, 2),
@@ -1177,7 +1199,9 @@ def _construir_billetera_municipal(
             "programas_millones": _fmt(programas, 3),
         },
         "subt_22_bienes_servicios_millones": _fmt(subt_22, 3),
+        "subt_24_transferencias_corrientes_millones": _fmt(subt_24, 3),
         "gasto_inversion_millones": _fmt(gasto_inv, 3),
+        "inversion_pct": _fmt(inv_pct, 2),
         "costo_administracion_interna": {
             "disponible": admin_monto is not None or admin_pct is not None,
             "monto_millones": _fmt(admin_monto, 3),

@@ -424,7 +424,7 @@ export default async (req) => {
       variables_y_fuentes: [
         "PIB real y sectorial de Aysén 2013–2025 (Banco Central de Chile · BDE SI3)",
         "Población oficial y PIB per cápita 2025 (INE + BCCh)",
-        "Ejecución presupuestaria GORE Aysén, Gobierno Central y SINIM BEP 2025 (DIPRES CKAN + SUBDERE)",
+        "Ejecución presupuestaria GORE Aysén, Gobierno Central y SINIM 2018–2026 (DIPRES CKAN + SUBDERE 19 variables)",
         "Contratos de obras MOP DGOP en Aysén 2026 (78 contratos únicos, 43 de Vialidad)",
       ],
       hipotesis_y_metodo:
@@ -450,7 +450,7 @@ export default async (req) => {
       ],
       hipotesis_alternativas: [
         "La alta participación de Pesca/Acuicultura explica fuertes oscilaciones anuales del crecimiento regional que no reflejan necesariamente la estructura laboral permanente.",
-        "La ficha resumida BEP de SINIM no separa Subt. 24 ni Subt. 31, por lo que el porcentaje municipal refleja gasto corriente observable (Subt. 21 + Subt. 22).",
+        "Los indicadores municipales 2018–2025 integran Presupuesto Inicial, Vigente, Devengado, Gasto Corriente (IADM51), Inversión Municipal (IADM22), Subt. 24 y Área de Gestión Interna (BGMAGINT) desde SINIM.",
       ],
       interpretacion:
         eco25?.frase_tamano_vs_aporte ||

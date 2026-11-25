@@ -673,12 +673,19 @@ def _clave_dedup_registro(fila: Mapping[str, Any]) -> str:
 
 
 def _es_fila_gore_aysen(fila: Mapping[str, Any]) -> bool:
-    """Determina si una fila corresponde al Gobierno Regional de Aysén (Partida 31)."""
+    """Determina si una fila corresponde al Gobierno Regional de Aysén (Partida 31 o ex Partida 05)."""
     partida = _extraer_codigo_subtitulo(_valor_campo(fila, "Partida", "Codigo Partida"))
     campos_ref = (
         _valor_campo(fila, "Nombre Programa"),
         _valor_campo(fila, "Nombre Capitulo", "Nombre Capítulo"),
         _valor_campo(fila, "Nombre Asignacion", "Nombre Asignación"),
+        _valor_campo(
+            fila,
+            "Nombre Sub-Asignacion",
+            "Nombre Sub-Asignación",
+            "Nombre Subasignacion",
+            "Nombre Subasignación",
+        ),
     )
     tiene_aysen = any(_contiene_aysen(c) for c in campos_ref)
     if not tiene_aysen:
@@ -694,6 +701,13 @@ def _es_fila_partida05_aysen(fila: Mapping[str, Any]) -> bool:
         _valor_campo(fila, "Nombre Programa"),
         _valor_campo(fila, "Nombre Capitulo", "Nombre Capítulo"),
         _valor_campo(fila, "Nombre Asignacion", "Nombre Asignación"),
+        _valor_campo(
+            fila,
+            "Nombre Sub-Asignacion",
+            "Nombre Sub-Asignación",
+            "Nombre Subasignacion",
+            "Nombre Subasignación",
+        ),
         _valor_campo(fila, "Nombre Item", "Nombre Ítem"),
     )
     return any(_contiene_aysen(c) for c in campos_ref)
@@ -1620,15 +1634,85 @@ def _buscar_paquete_ejecucion_mes(
     return None
 
 
+def _cargar_csv_recurso_ckan(
+    recurso: Mapping[str, Any] | None,
+    timeout: int = TIMEOUT_CKAN_SEGUNDOS,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Descarga y parsea el CSV oficial de un recurso CKAN cuando su Datastore está vacío/inactivo."""
+    import csv as _csv
+    import io as _io
+
+    if not isinstance(recurso, Mapping):
+        return [], []
+    url = str(recurso.get("url") or "").strip()
+    if not url or not url.lower().startswith(("http://", "https://")):
+        return [], []
+    req = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/csv, */*"})
+    with urlopen(req, timeout=timeout) as resp:
+        raw = resp.read()
+    texto: str | None = None
+    for enc in ("utf-8-sig", "utf-8", "cp1252", "iso-8859-1"):
+        try:
+            texto = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if texto is None:
+        texto = raw.decode("utf-8", errors="replace")
+    primera = texto.splitlines()[0] if texto.splitlines() else ""
+    delim = ";" if primera.count(";") >= primera.count(",") else ","
+    reader = _csv.DictReader(_io.StringIO(texto), delimiter=delim)
+    campos = [str(c).strip() for c in (reader.fieldnames or []) if c]
+    filas = [
+        {str(k).strip(): v for k, v in row.items() if k is not None}
+        for row in reader
+    ]
+    return filas, campos
+
+
+def _clasificar_filas_programa_desde_lista(
+    filas_todas: Sequence[Mapping[str, Any]],
+    campos: Sequence[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[str]]:
+    """Separa filas de GORE Aysén, Vialidad MOP (12-02) y servicios en Aysén desde una lista completa."""
+    filas_gore: list[dict[str, Any]] = []
+    filas_p12: list[dict[str, Any]] = []
+    dedup_serv: dict[str, dict[str, Any]] = {}
+
+    for fila in filas_todas:
+        if _es_fila_gore_aysen(fila):
+            filas_gore.append(dict(fila))
+            continue
+        partida = _extraer_codigo_subtitulo(_valor_campo(fila, "Partida", "Codigo Partida"))
+        if partida == "12":
+            filas_p12.append(dict(fila))
+        if _es_fila_partida05_aysen(fila):
+            dedup_serv[_clave_dedup_registro(fila)] = dict(fila)
+
+    filas_vialidad = _filtrar_filas_vialidad_mop(filas_p12)
+    return filas_gore, filas_vialidad, list(dedup_serv.values()), list(campos)
+
+
 def _consultar_filas_programa_piloto(
     resource_id: str,
     http_get_json: Callable[[str, int], dict[str, Any]],
+    *,
+    recurso: Mapping[str, Any] | None = None,
+    permitir_csv_directo: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[str]]:
     """Consulta en un recurso ``A nivel Programa`` las filas de GORE, Vialidad MOP y servicios Aysén."""
-    # 1. Partida 31 -> GORE Aysén
-    reg_p31, c_p31 = _datastore_search_paginado(
-        resource_id, http_get_json, filters={"Partida": "31"}
-    )
+    # 1. Partida 31 -> GORE Aysén (2023+)
+    try:
+        reg_p31, c_p31 = _datastore_search_paginado(
+            resource_id, http_get_json, filters={"Partida": "31"}
+        )
+    except DipresCkanError:
+        if permitir_csv_directo and recurso is not None:
+            filas_csv, campos_csv = _cargar_csv_recurso_ckan(recurso)
+            if filas_csv:
+                return _clasificar_filas_programa_desde_lista(filas_csv, campos_csv)
+        raise
+
     filas_gore = [dict(f) for f in reg_p31 if _es_fila_gore_aysen(f)]
 
     # 2. Partida 12 Capítulo 02 -> Dirección de Vialidad MOP
@@ -1649,7 +1733,7 @@ def _consultar_filas_programa_piloto(
             break
     filas_vialidad = _filtrar_filas_vialidad_mop(reg_p12)
 
-    # 3. Partida 05 + búsqueda textual AYSÉN -> Servicios regionales en Aysén (sin GORE P31)
+    # 3. Partida 05 + búsqueda textual AYSÉN -> Servicios regionales en Aysén (y GORE P05 en 2018-2022)
     reg_p05: list[dict[str, Any]] = []
     c_p05: list[str] = []
     for cod_p05 in ("05", "5"):
@@ -1666,13 +1750,19 @@ def _consultar_filas_programa_piloto(
     except DipresCkanError:
         reg_q_aysen, c_q = [], []
 
+    dedup_gore: dict[str, dict[str, Any]] = {_clave_dedup_registro(f): f for f in filas_gore}
     dedup_serv: dict[str, dict[str, Any]] = {}
     for fila in reg_p05:
-        if _es_fila_partida05_aysen(fila) and not _es_fila_gore_aysen(fila):
+        if _es_fila_gore_aysen(fila):
+            dedup_gore[_clave_dedup_registro(fila)] = dict(fila)
+        elif _es_fila_partida05_aysen(fila):
             dedup_serv[_clave_dedup_registro(fila)] = dict(fila)
     for fila in reg_q_aysen:
-        if not _es_fila_gore_aysen(fila):
+        if _es_fila_gore_aysen(fila):
+            dedup_gore[_clave_dedup_registro(fila)] = dict(fila)
+        else:
             dedup_serv[_clave_dedup_registro(fila)] = dict(fila)
+    filas_gore = list(dedup_gore.values())
     filas_servicios = list(dedup_serv.values())
 
     campos: list[str] = []
@@ -1680,6 +1770,11 @@ def _consultar_filas_programa_piloto(
         for c in lista:
             if c not in campos:
                 campos.append(c)
+
+    if permitir_csv_directo and recurso is not None and not filas_gore and not filas_vialidad:
+        filas_csv, campos_csv = _cargar_csv_recurso_ckan(recurso)
+        if filas_csv:
+            return _clasificar_filas_programa_desde_lista(filas_csv, campos_csv)
 
     return filas_gore, filas_vialidad, filas_servicios, campos
 
@@ -2165,13 +2260,18 @@ def obtener_presupuestos_piloto_live(
         res_id_nac = str(recurso_nac["id"]) if recurso_nac is not None else None
 
         # Ejecución A nivel Programa (GORE Aysén, Vialidad MOP 12-02, servicios Aysén)
+        es_live = http_get_json is None
         filas_gore, filas_vialidad, filas_serv, campos_prog = _consultar_filas_programa_piloto(
-            res_id_prog, fetcher
+            res_id_prog, fetcher, recurso=recurso_prog, permitir_csv_directo=es_live
         )
 
         # Ejecución A nivel Nacional (Gobierno Central de Chile)
         if res_id_nac is not None:
             filas_nac, campos_nac = _datastore_search_paginado(res_id_nac, fetcher)
+            if es_live and (not filas_nac or campos_nac == ["_id"]):
+                filas_nac_csv, campos_nac_csv = _cargar_csv_recurso_ckan(recurso_nac)
+                if filas_nac_csv:
+                    filas_nac, campos_nac = filas_nac_csv, campos_nac_csv
         else:
             filas_nac, campos_nac = [], []
     except (DipresCkanError, HTTPError, URLError, TimeoutError, OSError) as exc:
@@ -2210,6 +2310,8 @@ def obtener_presupuestos_piloto_live(
                 ley_nac_filas, ley_nac_campos = _datastore_search_paginado(
                     str(rec_ley_nac["id"]), fetcher
                 )
+                if es_live and (not ley_nac_filas or ley_nac_campos == ["_id"]):
+                    ley_nac_filas, ley_nac_campos = _cargar_csv_recurso_ckan(rec_ley_nac)
             except DipresCkanError:
                 ley_nac_filas = None
         rec_ley_prog = ley_info["recurso_programa"]
@@ -2220,11 +2322,33 @@ def obtener_presupuestos_piloto_live(
                     ley_vial_filas,
                     ley_serv_filas,
                     ley_prog_campos,
-                ) = _consultar_filas_programa_piloto(str(rec_ley_prog["id"]), fetcher)
+                ) = _consultar_filas_programa_piloto(
+                    str(rec_ley_prog["id"]), fetcher, recurso=rec_ley_prog, permitir_csv_directo=es_live
+                )
             except DipresCkanError:
                 ley_gore_filas = None
                 ley_vial_filas = None
                 ley_serv_filas = None
+    elif ley_info["encontrado"] and es_live:
+        rec_ley_nac = ley_info.get("recurso_nacional")
+        rec_ley_prog = ley_info.get("recurso_programa")
+        if rec_ley_nac is not None:
+            try:
+                ley_nac_filas, ley_nac_campos = _cargar_csv_recurso_ckan(rec_ley_nac)
+            except Exception:
+                ley_nac_filas = None
+        if rec_ley_prog is not None:
+            try:
+                filas_lcsv, campos_lcsv = _cargar_csv_recurso_ckan(rec_ley_prog)
+                if filas_lcsv:
+                    (
+                        ley_gore_filas,
+                        ley_vial_filas,
+                        ley_serv_filas,
+                        ley_prog_campos,
+                    ) = _clasificar_filas_programa_desde_lista(filas_lcsv, campos_lcsv)
+            except Exception:
+                ley_gore_filas = None
 
     motivo_iv_general = ley_info["nota"]
     url_ley = ley_info["url_respaldo"]

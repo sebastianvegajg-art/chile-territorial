@@ -30,6 +30,7 @@ if str(_DIR_FISCAL) not in sys.path:
     sys.path.insert(0, str(_DIR_FISCAL))
 
 import dipres_ckan  # noqa: E402
+import sinim_datos_live  # noqa: E402
 import sinim_ficha_live  # noqa: E402
 
 
@@ -1016,6 +1017,147 @@ class TestDipresPilotoPresupuestarioLive(unittest.TestCase):
             self.assertEqual(comp_gore["ejecutado_mismo_mes_anterior_millones"], "50000")
             self.assertEqual(comp_gore["diferencia_millones"], "10000")
             self.assertEqual(comp_gore["variacion_nominal_pct"], "20")
+
+    def test_clasificar_filas_csv_historico_gore_2022_subasignacion_y_2018_p05(self):
+        filas_2022 = [
+            {
+                "Partida": "05",
+                "Capítulo": "34",
+                "Nombre Capítulo": "FINANCIAMIENTO GOBIERNOS REGIONALES",
+                "Programa": "01",
+                "Nombre Programa": "FINANCIAMIENTO GOBIERNOS REGIONALES",
+                "Subtítulo": "24",
+                "Item": "03",
+                "Asignación": "001",
+                "Sub-Asignación": "011",
+                "Nombre Sub-Asignación": "Gobierno Regional de Aysén del General Carlos Ibáñez del Campo",
+                "Moneda": "PESOS",
+                "Ejecución a DICIEMBRE": "6.359.712",
+            },
+            {
+                "Partida": "05",
+                "Capítulo": "34",
+                "Nombre Capítulo": "FINANCIAMIENTO GOBIERNOS REGIONALES",
+                "Programa": "01",
+                "Nombre Programa": "FINANCIAMIENTO GOBIERNOS REGIONALES",
+                "Subtítulo": "33",
+                "Item": "03",
+                "Asignación": "001",
+                "Sub-Asignación": "011",
+                "Nombre Sub-Asignación": "Gobierno Regional de Aysén del General Carlos Ibáñez del Campo",
+                "Moneda": "PESOS",
+                "Ejecución a DICIEMBRE": "56.280.648",
+            },
+            {
+                "Partida": "12",
+                "Capítulo": "02",
+                "Nombre Capítulo": "DIRECCIÓN GENERAL DE OBRAS PÚBLICAS",
+                "Programa": "04",
+                "Nombre Programa": "DIRECCIÓN DE VIALIDAD",
+                "Subtítulo": "31",
+                "Moneda": "PESOS",
+                "Ejecución a DICIEMBRE": "1.500.000.000",
+            },
+            {
+                "Partida": "12",
+                "Capítulo": "02",
+                "Nombre Capítulo": "DIRECCIÓN GENERAL DE OBRAS PÚBLICAS",
+                "Programa": "06",
+                "Nombre Programa": "DIRECCIÓN DE OBRAS PORTUARIAS",
+                "Subtítulo": "31",
+                "Moneda": "PESOS",
+                "Ejecución a DICIEMBRE": "400.000.000",
+            },
+            {
+                "Partida": "16",
+                "Capítulo": "40",
+                "Nombre Capítulo": "SERVICIO DE SALUD AYSÉN DEL GENERAL CARLOS IBÁÑEZ DEL CAMPO",
+                "Programa": "01",
+                "Nombre Programa": "SERVICIO DE SALUD AYSÉN DEL GENERAL CARLOS IBÁÑEZ DEL CAMPO",
+                "Subtítulo": "21",
+                "Moneda": "PESOS",
+                "Ejecución a DICIEMBRE": "90.000.000",
+            },
+        ]
+        gore, vial, serv, _ = dipres_ckan._clasificar_filas_programa_desde_lista(
+            filas_2022, list(filas_2022[0].keys())
+        )
+        self.assertEqual(len(gore), 2)
+        self.assertEqual(len(vial), 1)
+        self.assertEqual(len(serv), 1)
+        # Nunca duplicar GORE dentro de servicios
+        self.assertNotIn("34", [s.get("Capítulo") for s in serv])
+
+
+class TestSinimDatosHistoricoLive(unittest.TestCase):
+    def test_construir_registro_y_reproducir_sinim_historico_decimal34(self):
+        reg = sinim_datos_live.construir_registro_comuna_anio(
+            "11201",
+            2025,
+            {
+                "presupuesto_inicial": Decimal("15734311"),
+                "presupuesto_vigente": Decimal("20152310"),
+                "gasto_total_devengado": Decimal("13991886"),
+                "gastos_corrientes": Decimal("11922500"),
+                "inversion_municipal": Decimal("1221500"),
+                "gasto_personal_sub21": Decimal("6881918"),
+                "gasto_bienes_servicios_sub22": Decimal("3691026"),
+                "transferencias_corrientes_sub24": Decimal("1349556"),
+                "area_gestion_interna": Decimal("8593800"),
+                "ingresos_percibidos": Decimal("15240500"),
+                "ingresos_fcm": Decimal("9450000"),
+            },
+        )
+        self.assertEqual(reg["presupuesto_inicial_millones"], "15734.311")
+        self.assertEqual(reg["presupuesto_vigente_millones"], "20152.31")
+        self.assertEqual(reg["gasto_total_devengado_millones"], "13991.886")
+        self.assertEqual(reg["tasa_ejecucion_pct"], "69.43")
+        self.assertEqual(reg["porcentaje_gasto_corriente_pct"], "85.21")
+        self.assertEqual(reg["inversion_pct"], "8.73")
+        self.assertEqual(reg["transferencias_corrientes_sub24_millones"], "1349.556")
+        self.assertEqual(reg["costo_admin_interno_millones"], "8593.8")
+        self.assertEqual(reg["costo_admin_interno_pct"], "61.42")
+        self.assertIn("BGMAGINT", reg["nota_costo_administracion"])
+        self.assertIn("inversión municipal", reg["frase_radial"])
+
+        class FakeClienteSinim:
+            def post_json(self, path: str, payload: dict) -> dict:
+                if path.endswith("obtener_municipios.php"):
+                    return {"textos": [{"id_municipio": "1", "idLegal": "11201"}]}
+                if path.endswith("obtener_cabecera.php"):
+                    return {"paginas": {"1": [{"id_dato": 4211}]}}
+                if path.endswith("obtener_valores.php"):
+                    return {
+                        "textos": [
+                            {"municipio": "1", "col": "col-26-4211", "valor": "15.734.311"},
+                            {"municipio": "1", "col": "col-26-4213", "valor": "20.152.310"},
+                            {"municipio": "1", "col": "col-26-1093", "valor": "13.991.886"},
+                            {"municipio": "1", "col": "col-26-894", "valor": "11.922.500"},
+                            {"municipio": "1", "col": "col-26-1103", "valor": "1.221.500"},
+                            {"municipio": "1", "col": "col-26-4162", "valor": "8.593.800"},
+                        ]
+                    }
+                raise AssertionError(path)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            salida = base / "published" / "sinim-aysen-historico.json"
+            pub = sinim_datos_live.extraer_sinim_historico_live(
+                anios=[2025],
+                raw_root=base / "raw",
+                salida_path=salida,
+                cliente=FakeClienteSinim(),  # type: ignore[arg-type]
+                timestamp="20261125T160000Z",
+            )
+            self.assertEqual(pub["piloto_aysen"]["presupuesto_inicial_millones"], "15734.311")
+            dir_insumos = Path(pub["fuente_trazabilidad"]["directorio_insumos"])
+            repro = sinim_datos_live.reproducir_sinim_historico(dir_insumos, salida_path=None)
+            self.assertEqual(repro["por_anio"], pub["por_anio"])
+
+            # Corromper archivo archivado debe fallar verificación SHA-256
+            (dir_insumos / "valores-pagina-1.json").write_text("{}", encoding="utf-8")
+            with self.assertRaises(RuntimeError):
+                sinim_datos_live.reproducir_sinim_historico(dir_insumos, salida_path=None)
 
 
 if __name__ == "__main__":

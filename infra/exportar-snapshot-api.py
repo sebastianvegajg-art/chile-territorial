@@ -60,10 +60,11 @@ def main() -> int:
     for yr in anios:
         aysen_economia[str(yr)] = ap.aysen_economia(anio=yr)
         aysen_resumen[f"{yr}:"] = ap.aysen_resumen(anio=yr, comuna="")
-        # Para 2025 y 2026 precalculamos las 10 comunas completas; para otros años la comuna por defecto 11201
-        if yr in (2025, 2026):
+        # Para 2018–2026 precalculamos las 10 comunas completas en presupuestos (y 2024–2026 en resumen)
+        if yr >= 2018:
             for cut in comunas_cut:
-                aysen_resumen[f"{yr}:{cut}"] = ap.aysen_resumen(anio=yr, comuna=cut)
+                if yr >= 2024:
+                    aysen_resumen[f"{yr}:{cut}"] = ap.aysen_resumen(anio=yr, comuna=cut)
                 aysen_presupuestos[f"{yr}:{cut}"] = ap.aysen_presupuestos(anio=yr, comuna=cut)
         else:
             aysen_presupuestos[f"{yr}:11201"] = ap.aysen_presupuestos(anio=yr, comuna="11201")

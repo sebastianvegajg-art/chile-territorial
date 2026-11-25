@@ -50,7 +50,7 @@ def _preparar_dipres_piloto(solo_faltantes: bool) -> bool:
         return False
 
     ok_todos = True
-    for anio in (2025, 2026):
+    for anio in (2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018):
         destino = RAW / f"dipres-piloto-{anio}.json"
         if solo_faltantes and destino.exists():
             print(f"[datos-oficiales] Conservando corte existente: {destino.name}", flush=True)
@@ -106,7 +106,10 @@ def main(argv: list[str] | None = None) -> int:
             if not _correr_modulo("pipelines.economia.bde_publico", [], "PIB oficial BDE público"):
                 fallos.append("pib_bde_publico")
 
-    # 2. SINIM 10 comunas de Aysén
+    # 2. SINIM 10 comunas de Aysén (histórico 2018–2025 + ficha comunal)
+    if not (args.solo_faltantes and (PUB / "sinim-aysen-historico.json").exists()):
+        if not _correr_modulo("pipelines.fiscal.sinim_datos_live", [], "SINIM histórico 2018–2025 (10 comunas Aysén)"):
+            fallos.append("sinim_aysen_historico")
     if not (args.solo_faltantes and (PUB / "sinim-aysen-oficial.json").exists()):
         if not _correr_modulo("pipelines.fiscal.sinim_ficha_live", [], "SINIM fichas comunales (10 comunas Aysén)"):
             fallos.append("sinim_aysen")

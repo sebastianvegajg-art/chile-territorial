@@ -959,6 +959,8 @@ function normalizeInstitucionPresupuesto(
   if (s21Rec) {
     const s21Total = pickNumber(s21Rec, ['total_millones'])
     const s22 = pickNumber(raw, ['subt_22_bienes_servicios_millones'])
+    const s24 = pickNumber(raw, ['subt_24_transferencias_corrientes_millones'])
+    const invMun = pickNumber(raw, ['gasto_inversion_millones', 'inversion_millones'])
     const baseDev = gastoEjecutado && gastoEjecutado > 0 ? gastoEjecutado : null
     if (desglose.length === 0) {
       if (s21Total !== null) {
@@ -967,7 +969,7 @@ function normalizeInstitucionPresupuesto(
           subcategoria: 'Subt. 21',
           monto_millones: s21Total,
           porcentaje_pct: baseDev ? Number(((s21Total / baseDev) * 100).toFixed(2)) : null,
-          detalle: 'Total devengado en personal municipal según ficha BEP SINIM.',
+          detalle: 'Total devengado en personal municipal según SINIM BEP.',
         })
       }
       if (s22 !== null) {
@@ -979,14 +981,33 @@ function normalizeInstitucionPresupuesto(
           detalle: 'Operación, consumos básicos y servicios contratados.',
         })
       }
-      if (baseDev !== null && gastoCorriente !== null && baseDev >= gastoCorriente) {
-        const otros = Number((baseDev - gastoCorriente).toFixed(3))
+      if (s24 !== null) {
         desglose.push({
-          categoria: 'Otros gastos devengados (transferencias, inversión y otros no desglosados en BEP)',
+          categoria: 'Transferencias Corrientes (Subtítulo 24)',
+          subcategoria: 'Subt. 24',
+          monto_millones: s24,
+          porcentaje_pct: baseDev ? Number(((s24 / baseDev) * 100).toFixed(2)) : null,
+          detalle: 'Transferencias a comunidad, corporaciones y otros servicios.',
+        })
+      }
+      if (invMun !== null) {
+        desglose.push({
+          categoria: 'Inversión Municipal (SINIM IADM22)',
+          subcategoria: 'Inversión',
+          monto_millones: invMun,
+          porcentaje_pct: baseDev ? Number(((invMun / baseDev) * 100).toFixed(2)) : null,
+          detalle: 'Iniciativas de inversión y activos municipales.',
+        })
+      }
+      const sumaMostrada = (s21Total ?? 0) + (s22 ?? 0) + (s24 ?? 0) + (invMun ?? 0)
+      if (baseDev !== null && baseDev > sumaMostrada + 0.5) {
+        const otros = Number((baseDev - sumaMostrada).toFixed(3))
+        desglose.push({
+          categoria: 'Otros gastos devengados',
           subcategoria: 'Otros',
           monto_millones: otros,
           porcentaje_pct: Number(((otros / baseDev) * 100).toFixed(2)),
-          detalle: 'La ficha resumida BEP SINIM no separa Subt. 24 y Subt. 31 individualmente.',
+          detalle: 'Resto de subtítulos no detallados en el bloque principal.',
         })
       }
     }
