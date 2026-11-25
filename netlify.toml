@@ -1,23 +1,21 @@
-# Configuración de despliegue del frontend React + Vite en Netlify (Opción 1)
-# Reemplaza TU_BACKEND_RENDER por la URL real de tu servicio en Render o Railway
-# (por ejemplo: https://chile-territorial-api.onrender.com)
+# Configuración de despliegue público en Netlify (Frontend React/Vite + API serverless oficial)
+# Si posteriormente despliegas el backend FastAPI en Render/Railway, basta con definir la
+# variable de entorno BACKEND_API_URL=https://<tu-servicio>.onrender.com en Netlify para
+# que la función /api/v1/* actúe como proxy en vivo sin cambios de código.
 
 [build]
-  base = "apps/web"
-  command = "npm run build"
-  publish = "dist"
+  command = "npm --prefix apps/web ci && npm --prefix apps/web run build"
+  publish = "apps/web/dist"
+  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "22"
 
-# Proxy transparente hacia el backend FastAPI (mantiene /api/v1 en el mismo dominio, sin CORS ni tokens en el navegador)
-[[redirects]]
-  from = "/api/*"
-  to = "https://chile-territorial-api.onrender.com/api/:splat"
-  status = 200
-  force = true
+[functions]
+  node_bundler = "esbuild"
+  included_files = ["netlify/functions/data/**"]
 
-# Fallback SPA para navegación por hash/rutas
+# Fallback SPA para navegación web
 [[redirects]]
   from = "/*"
   to = "/index.html"
