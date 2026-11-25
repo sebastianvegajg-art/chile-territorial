@@ -157,7 +157,7 @@ function InProgressBanner({
 
 function SourceLink({
   fuente,
-  label = 'Abrir fuente oficial',
+  label = 'Fuente oficial',
 }: {
   fuente?: FuenteOficial | null
   label?: string
@@ -1162,53 +1162,53 @@ export function PoliticalView() {
           CABECERA COMPACTA SUPERIOR + CONTROLES COMPARTIDOS + 4 TABS
       ============================================================ */}
       <header className="aysen-header">
-        <div className="aysen-header-top">
-          <div>
+        <div className="aysen-header-row">
+          <div className="aysen-header-top">
             <p className="eyebrow">Región de Aysén · Código 11</p>
             <h1 className="aysen-title">Observatorio de Aysén</h1>
             <p className="aysen-subtitle">
-              Economía, presupuestos públicos y obras con respaldo oficial en un toque.
+              Economía, presupuestos públicos y obras con respaldo oficial verificable.
             </p>
           </div>
-        </div>
 
-        {/* Barra de controles compartidos */}
-        <div className="aysen-controls" aria-label="Filtros globales del Observatorio de Aysén">
-          <label className="aysen-control-field" htmlFor={yearSelectId}>
-            <span>Año</span>
-            <select
-              id={yearSelectId}
-              value={anio}
-              onChange={event => {
-                setAnio(Number(event.target.value))
-                setSelectedProjectId(null)
-              }}
-            >
-              {ANIOS_AYSEN.map(y => (
-                <option key={y} value={y}>
-                  {y}{y >= 2026 ? ' (en curso)' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {showComunaSelector && (
-            <label className="aysen-control-field" htmlFor={comunaSelectId}>
-              <span>Comuna</span>
+          {/* Barra de controles compartidos */}
+          <div className="aysen-controls" aria-label="Filtros globales del Observatorio de Aysén">
+            <label className="aysen-control-field" htmlFor={yearSelectId}>
+              <span>Año</span>
               <select
-                id={comunaSelectId}
-                value={comunaSelectorValue}
-                onChange={event => handleComunaChange(event.target.value)}
+                id={yearSelectId}
+                value={anio}
+                onChange={event => {
+                  setAnio(Number(event.target.value))
+                  setSelectedProjectId(null)
+                }}
               >
-                {activeTab === 'proyectos' && <option value="">Todas las comunas (10)</option>}
-                {COMUNAS_AYSEN.map(c => (
-                  <option key={c.cut} value={c.cut}>
-                    {c.nombre} ({c.cut})
+                {ANIOS_AYSEN.map(y => (
+                  <option key={y} value={y}>
+                    {y}{y >= 2026 ? ' (en curso)' : ''}
                   </option>
                 ))}
               </select>
             </label>
-          )}
+
+            {showComunaSelector && (
+              <label className="aysen-control-field" htmlFor={comunaSelectId}>
+                <span>Comuna</span>
+                <select
+                  id={comunaSelectId}
+                  value={comunaSelectorValue}
+                  onChange={event => handleComunaChange(event.target.value)}
+                >
+                  {activeTab === 'proyectos' && <option value="">Todas las comunas (10)</option>}
+                  {COMUNAS_AYSEN.map(c => (
+                    <option key={c.cut} value={c.cut}>
+                      {c.nombre} ({c.cut})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
         </div>
 
         {/* Navegación exclusiva de 4 pestañas */}
@@ -1334,7 +1334,7 @@ export function PoliticalView() {
                 {/* Tarjeta 2: Inversión pública registrada */}
                 <article className="aysen-card aysen-summary-card">
                   <div className="aysen-card-top">
-                    <span className="aysen-card-kicker">2 · Inversión pública registrada</span>
+                    <span className="aysen-card-kicker">2 · Inversión pública</span>
                     {resumenState.data.inversion_publica.variacion_mismo_periodo_pct !== null && (
                       <span className="aysen-pill-accent">
                         {fmtPct(resumenState.data.inversion_publica.variacion_mismo_periodo_pct, true)} vs mismo período
@@ -1348,8 +1348,10 @@ export function PoliticalView() {
                       : 'Sin dato disponible'}
                   </p>
                   <p className="aysen-figure-caption">
-                    {resumenState.data.inversion_publica.periodo_comparado ||
-                      `Ejecución de inversión registrada (${anio})`}
+                    {resumenState.data.inversion_publica.variacion_mismo_periodo_pct !== null &&
+                    resumenState.data.inversion_publica.periodo_comparado
+                      ? resumenState.data.inversion_publica.periodo_comparado
+                      : `Ejecución de inversión y capital registrada (${anio})`}
                   </p>
 
                   {resumenState.data.inversion_publica.instituciones_cubiertas.length > 0 && (
@@ -1401,7 +1403,7 @@ export function PoliticalView() {
                 {/* Tarjeta 3: Compromisos de años anteriores (arrastre) */}
                 <article className="aysen-card aysen-summary-card">
                   <div className="aysen-card-top">
-                    <span className="aysen-card-kicker">3 · Compromisos de años anteriores</span>
+                    <span className="aysen-card-kicker">3 · Arrastre comprometido</span>
                     <span className="aysen-arrastre-badge is-arrastre">Arrastre</span>
                   </div>
 
