@@ -5,7 +5,27 @@ import type { Metric, Observation, Provenance, Publication, Territory, Valuation
 import { History } from './history'
 import { comparable, compareValues, derive } from './metrics'
 import type { Derived } from './metrics'
+import { PoliticalView } from './PoliticalView'
 import './styles.css'
+
+type Page = 'comparar' | 'politica' | 'metodologia'
+
+const POLITICAL_HASHES = new Set([
+  '#politica',
+  '#eje-1',
+  '#eje-2',
+  '#eje-3',
+  '#eje-4',
+  '#simulador-aysen',
+  '#explorador-bcch',
+])
+
+function resolvePage(hash: string, current: Page = 'comparar'): Page {
+  if (hash === '#contenido') return current
+  if (hash === '#metodologia') return 'metodologia'
+  if (POLITICAL_HASHES.has(hash)) return 'politica'
+  return 'comparar'
+}
 
 const metrics = [
   { id: 'nivel-real', label: 'PIB real', metric: 'nivel', valuation: 'real' },
@@ -64,7 +84,7 @@ function formatReleaseDate(value?: string) {
 }
 
 function App() {
-  const [page, setPage] = useState(location.hash === '#metodologia' ? 'metodologia' : 'comparar')
+  const [page, setPage] = useState<Page>(() => resolvePage(location.hash))
   const [mode, setMode] = useState<'official' | 'demo'>(demoDefault ? 'demo' : 'official')
   const [territories, setTerritories] = useState<Territory[]>([])
   const [releases, setReleases] = useState<Publication[]>([])
@@ -172,10 +192,17 @@ function App() {
   }, [mode])
 
   useEffect(() => {
-    const sync = () => setPage(location.hash === '#metodologia' ? 'metodologia' : 'comparar')
+    const sync = () => setPage(current => resolvePage(location.hash, current))
     window.addEventListener('hashchange', sync)
     return () => window.removeEventListener('hashchange', sync)
   }, [])
+
+  function selectReadingMode(next: 'comparar' | 'politica') {
+    if (next === 'politica' && standalone) return
+    setPage(next)
+    const targetHash = next === 'politica' ? '#politica' : '#comparar'
+    if (location.hash !== targetHash) location.hash = targetHash
+  }
 
   useEffect(() => {
     const request = new AbortController()
@@ -291,15 +318,49 @@ function App() {
             <span className="brand-mark" aria-hidden="true">▥</span>
             <span>Chile <strong>Territorial</strong></span>
           </a>
-          <nav aria-label="Principal">
-            <a href="#comparar" aria-current={page === 'comparar' ? 'page' : undefined}>Comparador</a>
-            <a href="#metodologia" aria-current={page === 'metodologia' ? 'page' : undefined}>Metodología</a>
-          </nav>
+          <div className="masthead-right">
+            <div className="mode-switch" role="group" aria-label="Modo de lectura">
+              <button
+                type="button"
+                aria-pressed={page === 'comparar'}
+                onClick={() => selectReadingMode('comparar')}
+              >
+                Vista Contable
+              </button>
+              <button
+                type="button"
+                aria-pressed={page === 'politica'}
+                disabled={standalone}
+                title={standalone ? 'Requiere conexión a las APIs en vivo (no disponible en copia HTML autónoma)' : 'Lectura política y estratégica de la Región de Aysén'}
+                onClick={() => selectReadingMode('politica')}
+              >
+                Vista Política
+              </button>
+            </div>
+            <nav aria-label="Principal">
+              <a href="#comparar" aria-current={page === 'comparar' ? 'page' : undefined}>Comparador</a>
+              <a href="#metodologia" aria-current={page === 'metodologia' ? 'page' : undefined}>Metodología</a>
+            </nav>
+          </div>
         </div>
       </header>
 
       <main id="contenido" className="wrap" tabIndex={-1}>
-        {page === 'metodologia' ? (
+        {page === 'politica' ? (
+          standalone ? (
+            <section className="panel standalone-notice" aria-labelledby="standalone-politica-titulo">
+              <p className="eyebrow">Copia HTML autónoma sin conexión</p>
+              <h1 id="standalone-politica-titulo">Vista Política no disponible sin conexión</h1>
+              <p className="lede">
+                La Lectura Política y Estratégica de la Región de Aysén consulta en vivo las APIs oficiales del Banco Central (BCCh), DIPRES y SINIM.
+                Para utilizarla, abre la aplicación conectada al servidor local de Chile Territorial.
+              </p>
+              <a className="primary link-button" href="#comparar">Volver a Vista Contable</a>
+            </section>
+          ) : (
+            <PoliticalView />
+          )
+        ) : page === 'metodologia' ? (
           <article className="method">
             <p className="eyebrow">Observatorio económico · Cuentas Nacionales</p>
             <h1>Metodología</h1>

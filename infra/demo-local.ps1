@@ -40,7 +40,9 @@ Write-Host "$Etiqueta en http://127.0.0.1:5173 (API en http://127.0.0.1:8000/api
 Write-Host "Presiona Ctrl+C para detener ambos servicios."
 
 try {
-    Wait-Process -Id @($ApiProc.Id, $WebProc.Id) -Any
+    while (-not $ApiProc.HasExited -and -not $WebProc.HasExited) {
+        Start-Sleep -Milliseconds 500
+    }
 } finally {
     if (-not $WebProc.HasExited) { Stop-Process -Id $WebProc.Id -Force -ErrorAction SilentlyContinue }
     if (-not $ApiProc.HasExited) { Stop-Process -Id $ApiProc.Id -Force -ErrorAction SilentlyContinue }

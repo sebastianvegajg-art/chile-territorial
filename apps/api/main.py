@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from . import demo
+from .conectores import router as conectores_router
 from .lote_oficial import LoteOficial
 
 PREFIJO = "/api/v1"
@@ -167,6 +168,8 @@ def crear_app(demo_activa=False, lote_oficial=None):
         if value is None:
             raise HTTPException(404, "No se encontró la observación solicitada.")
         return value
+
+    app.include_router(conectores_router)
 
     return app
 
