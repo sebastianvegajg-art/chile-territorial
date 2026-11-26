@@ -7700,7 +7700,8 @@ button.proy-billboard.is-selected {
   border-color: var(--accent);
 }
 
-.portada-ctrl-btn[aria-pressed="true"] {
+.portada-ctrl-btn[aria-pressed="true"],
+.portada-ctrl-btn[aria-pressed="true"]:hover:not(:disabled) {
   background: var(--dark);
   border-color: var(--dark);
   color: #ffffff;
