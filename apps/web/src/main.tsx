@@ -11,9 +11,10 @@ import { EstructuraView } from './EstructuraView'
 import { LaboratorioView } from './LaboratorioView'
 import { PoliticalView } from './PoliticalView'
 import { PorGobiernoView } from './PorGobiernoView'
+import { PortadaView } from './PortadaView'
 import './styles.css'
 
-type Page = 'comparar' | 'politica' | 'por-gobierno' | 'empleo' | 'estructura' | 'demografia' | 'laboratorio' | 'metodologia'
+type Page = 'portada' | 'comparar' | 'politica' | 'por-gobierno' | 'empleo' | 'estructura' | 'demografia' | 'laboratorio' | 'metodologia'
 type Lens = 'contable' | 'politica'
 
 const CONTABLE_PAGES = new Set<Page>(['comparar', 'estructura', 'empleo', 'demografia'])
@@ -29,8 +30,10 @@ const POLITICAL_HASHES = new Set([
   '#explorador-bcch',
 ])
 
-function resolvePage(hash: string, current: Page = 'comparar'): Page {
+function resolvePage(hash: string, current: Page = 'portada'): Page {
   if (hash === '#contenido') return current
+  if (hash === '' || hash === '#' || hash === '#portada') return 'portada'
+  if (hash === '#comparar') return 'comparar'
   if (hash === '#metodologia') return 'metodologia'
   if (hash === '#por-gobierno') return 'por-gobierno'
   if (hash === '#empleo') return 'empleo'
@@ -206,11 +209,13 @@ function App() {
     return () => request.abort()
   }, [mode])
 
-  const activeLens: Lens = POLITICA_PAGES.has(page)
-    ? 'politica'
-    : CONTABLE_PAGES.has(page)
-      ? 'contable'
-      : lastLens
+  const activeLens: Lens = page === 'portada'
+    ? 'contable'
+    : POLITICA_PAGES.has(page)
+      ? 'politica'
+      : CONTABLE_PAGES.has(page)
+        ? 'contable'
+        : lastLens
 
   useEffect(() => {
     if (POLITICA_PAGES.has(page)) setLastLens('politica')
@@ -226,6 +231,13 @@ function App() {
     window.addEventListener('hashchange', sync)
     return () => window.removeEventListener('hashchange', sync)
   }, [])
+
+  function enterObservatory() {
+    const targetPage: Page = standalone ? 'comparar' : 'politica'
+    const targetHash = standalone ? '#comparar' : '#politica'
+    setPage(targetPage)
+    if (location.hash !== targetHash) location.hash = targetHash
+  }
 
   function selectReadingMode(next: Lens) {
     setLastLens(next)
@@ -349,6 +361,15 @@ function App() {
     ? Math.min(100, (activeRelease.cobertura.disponibles / activeRelease.cobertura.esperadas) * 100)
     : null
 
+  if (page === 'portada') {
+    return (
+      <>
+        <a className="skip-link" href="#portada-titulo">Ir al contenido principal</a>
+        <PortadaView onEnter={enterObservatory} />
+      </>
+    )
+  }
+
   return (
     <>
       <a className="skip-link" href="#contenido">Ir al contenido principal</a>
@@ -356,8 +377,8 @@ function App() {
         <div className="masthead-inner wrap">
           <a
             className="brand brand-confiasur"
-            href={activeLens === 'politica' ? (standalone ? '#por-gobierno' : '#politica') : '#comparar'}
-            aria-label="CONFIASUR Consultores · Observatorio Territorial"
+            href="#portada"
+            aria-label="CONFIASUR Consultores · Volver a la portada"
           >
             <img
               src="/brand/confiasur-logo-light.png"
