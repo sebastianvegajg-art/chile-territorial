@@ -12,6 +12,7 @@ import { LaboratorioView } from './LaboratorioView'
 import { PoliticalView } from './PoliticalView'
 import { PorGobiernoView } from './PorGobiernoView'
 import { PortadaView } from './PortadaView'
+import { InfoPopover } from './components/InfoPopover'
 import './styles.css'
 
 type Page = 'portada' | 'comparar' | 'politica' | 'por-gobierno' | 'empleo' | 'estructura' | 'demografia' | 'laboratorio' | 'metodologia'
@@ -45,13 +46,69 @@ function resolvePage(hash: string, current: Page = 'portada'): Page {
 }
 
 const metrics = [
-  { id: 'nivel-real', label: 'PIB real', metric: 'nivel', valuation: 'real' },
-  { id: 'nivel-nominal', label: 'PIB nominal', metric: 'nivel', valuation: 'nominal' },
-  { id: 'crecimiento', label: 'Crecimiento real', metric: 'crecimiento', valuation: 'real' },
-  { id: 'participacion', label: 'Participación regional', metric: 'participacion', valuation: 'nominal' },
-  { id: 'acumulado', label: 'Crecimiento real acumulado', metric: 'nivel', valuation: 'real' },
-  { id: 'indice', label: 'Índice histórico real', metric: 'nivel', valuation: 'real' },
-] as const satisfies readonly { id: string; label: string; metric: Metric; valuation: Valuation }[]
+  {
+    id: 'nivel-real',
+    label: 'PIB real',
+    optionLabel: 'PIB real (sin inflación, base 2018)',
+    metric: 'nivel',
+    valuation: 'real',
+    unitShort: 'millones de pesos (base 2018)',
+    precision: 'Mide la producción económica descontando la inflación, valorada a precios constantes de 2018. Sirve para comparar cuánto creció realmente la actividad entre distintos años.',
+  },
+  {
+    id: 'nivel-nominal',
+    label: 'PIB nominal',
+    optionLabel: 'PIB nominal (precios de cada año)',
+    metric: 'nivel',
+    valuation: 'nominal',
+    unitShort: 'millones de pesos corrientes',
+    precision: 'Mide la producción a los precios vigentes de cada año (incluye la inflación). Sirve para ver el tamaño económico en pesos de ese momento y comparar regiones en un mismo año.',
+  },
+  {
+    id: 'crecimiento',
+    label: 'Crecimiento real',
+    optionLabel: 'Crecimiento real anual (%)',
+    metric: 'crecimiento',
+    valuation: 'real',
+    unitShort: 'variación real anual',
+    precision: 'Muestra cuánto aumentó o disminuyó la producción real respecto al año anterior, ya descontado el efecto de la inflación.',
+  },
+  {
+    id: 'participacion',
+    label: 'Participación regional',
+    optionLabel: 'Participación regional (%)',
+    metric: 'participacion',
+    valuation: 'nominal',
+    unitShort: 'del PIB nominal nacional',
+    precision: 'Indica qué porcentaje del PIB de Chile aporta cada región. Se calcula con PIB nominal (precios de cada año) para que los pesos regionales sumen coherentemente.',
+  },
+  {
+    id: 'acumulado',
+    label: 'Crecimiento real acumulado',
+    optionLabel: 'Crecimiento real acumulado (%)',
+    metric: 'nivel',
+    valuation: 'real',
+    unitShort: 'variación real acumulada',
+    precision: 'Mide cuánto creció o retrocedió la producción en términos reales (sin inflación) entre el año inicial seleccionado y cada año siguiente.',
+  },
+  {
+    id: 'indice',
+    label: 'Índice histórico real',
+    optionLabel: 'Índice histórico real (base 100)',
+    metric: 'nivel',
+    valuation: 'real',
+    unitShort: 'índice real (año inicial = 100)',
+    precision: 'Iguala todas las regiones en 100 el primer año para comparar fácilmente su ritmo real de crecimiento, incluso entre economías de distinto tamaño.',
+  },
+] as const satisfies readonly {
+  id: string
+  label: string
+  optionLabel: string
+  metric: Metric
+  valuation: Valuation
+  unitShort: string
+  precision: string
+}[]
 
 const regionPresets = [
   { id: 'aysen', label: 'Aysén', codes: ['11'] },
@@ -65,6 +122,14 @@ const bdeReal = bdeRoot + 'CCNN2018_PIB_REGIONAL'
 const bdeNominal = bdeRoot + 'CCNN2018_PIB_REGIONAL_N/637899740344107786'
 
 const number = new Intl.NumberFormat('es-CL', { maximumFractionDigits: 2 })
+const intNumber = new Intl.NumberFormat('es-CL', { maximumFractionDigits: 0 })
+const dec1Number = new Intl.NumberFormat('es-CL', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+const humanDateFormatter = new Intl.DateTimeFormat('es-CL', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC',
+})
 const status = {
   informado: 'Informado', preliminar: 'Preliminar', faltante: 'Sin dato',
   suprimido: 'Suprimido', no_aplicable: 'No aplica', error: 'Error',
@@ -86,8 +151,19 @@ function display(row?: Observation) {
 
 function formatKpiValue(row?: Observation) {
   if (row?.valor == null) return '—'
-  const formatted = number.format(Number(row.valor))
-  return row.unidad === '%' ? `${formatted}%` : formatted
+  const numeric = Number(row.valor)
+  if (!Number.isFinite(numeric)) return '—'
+  if (row.unidad === '%') return `${dec1Number.format(numeric)}%`
+  if (row.unidad === 'millones CLP') return intNumber.format(Math.round(numeric))
+  return dec1Number.format(numeric)
+}
+
+function formatHumanDate(value?: string) {
+  if (!value || value === '—') return 'Sin fecha'
+  const isoDay = value.slice(0, 10)
+  const parsed = new Date(`${isoDay}T12:00:00Z`)
+  if (Number.isNaN(parsed.getTime())) return isoDay
+  return humanDateFormatter.format(parsed)
 }
 
 function formatReleaseDate(value?: string) {
@@ -615,9 +691,13 @@ function App() {
                     <option value="demo">Demostración sintética</option>
                   </select>
                 </label>}
-                {mode === 'official' && releases.length > 0 && <label className="field">Corte
+                {mode === 'official' && releases.length > 0 && <label className="field">Fecha de actualización
                   <select value={cut} onChange={event => { setCut(event.target.value); setDownloadError('') }}>
-                    {releases.map(item => <option key={item.id} value={item.id}>{item.fecha.slice(0, 10)} · {item.id}</option>)}
+                    {releases.map((item, idx) => (
+                      <option key={item.id} value={item.id}>
+                        {formatHumanDate(item.fecha)}{releases.length > 1 && idx === 0 ? ' (más reciente)' : ''}
+                      </option>
+                    ))}
                   </select>
                 </label>}
                 <div className="field-pair">
@@ -635,7 +715,7 @@ function App() {
                 </div>
                 <label className="field">Indicador
                   <select value={measure} onChange={event => { setMeasure(event.target.value as typeof measure); setDownloadError('') }}>
-                    {metrics.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+                    {metrics.map(item => <option key={item.id} value={item.id}>{item.optionLabel}</option>)}
                   </select>
                 </label>
                 <fieldset>
@@ -672,10 +752,13 @@ function App() {
 
               <section className="panel results" aria-labelledby="results" aria-busy={loading}>
                 <div className="results-top">
-                  <div>
+                  <div className="results-heading">
                     <p className="eyebrow">{start === last ? start : `${start}–${last}`} · {chosen.length} {chosen.length === 1 ? 'región' : 'regiones'}</p>
                     <h2 id="results">{metric.label} por región</h2>
-                    {unit && <p className="subtle">{unit}{derived ? ` · Base ${start}` : unitRow?.anio_referencia && ` · Referencia ${unitRow.anio_referencia}`}</p>}
+                    <p className="results-unit-line">
+                      {metric.unitShort}
+                      {derived ? ` · Base ${start}` : unitRow?.anio_referencia && metric.valuation === 'real' ? ` · Precios constantes ${unitRow.anio_referencia}` : ''}
+                    </p>
                   </div>
                   <div className="result-downloads">
                     <button className="primary" disabled={!active?.publication || downloading} onClick={download}>
@@ -686,6 +769,19 @@ function App() {
                       <small id="offline-description" className="subtle">Copia del corte completo</small>
                     </>}
                   </div>
+                </div>
+
+                <div className="metric-precision-bar">
+                  <p className="metric-precision-text">{metric.precision}</p>
+                  <InfoPopover
+                    title="¿Qué diferencia al PIB real del PIB nominal?"
+                    label="Diferencia entre PIB real y PIB nominal"
+                    placement="inline"
+                    align="right"
+                  >
+                    <p><strong>PIB real:</strong> valora toda la producción usando los precios de un mismo año base (2018), eliminando la inflación. Es la medida correcta para saber si la economía creció o cayó entre años.</p>
+                    <p><strong>PIB nominal:</strong> usa los precios vigentes de cada año (incluye la inflación). Sirve para medir el tamaño monetario de ese año y calcular el peso (%) de cada región sobre Chile.</p>
+                  </InfoPopover>
                 </div>
                 {isDemo && <p className="notice"><strong>Datos sintéticos</strong> · Demostración del comparador. Las cifras son ficticias.</p>}
                 {downloadError && <p className="error" role="alert">{downloadError}</p>}
@@ -700,12 +796,13 @@ function App() {
                   </div>
                 ) : pendingOfficial ? <p className="empty">Aún no hay publicaciones oficiales disponibles. La demostración sintética se activa desde los filtros.</p> : !chosen.length ? <p className="empty">Selecciona al menos una región para comparar.</p> : (
                   <>
-                    <section className="kpi-strip" aria-label="Resumen del corte activo">
+                    <section className="kpi-strip is-three" aria-label="Resumen de cifras seleccionadas">
                       <div className="kpi-card kpi-card-accent">
-                        <span className="kpi-label">{chosen.length === 1 ? `Región seleccionada (${last})` : `Líder regional (${last})`}</span>
-                        <strong className="kpi-value" title={leader?.row ? display(leader.row) : undefined}>
+                        <span className="kpi-label">{chosen.length === 1 ? `Región seleccionada (${last})` : `Mayor valor regional (${last})`}</span>
+                        <strong className="kpi-value" title={leader?.row ? `${display(leader.row)} ${leader.row.unidad}` : undefined}>
                           {formatKpiValue(leader?.row)}
                         </strong>
+                        <span className="kpi-unit">{metric.unitShort}</span>
                         <span className="kpi-meta">
                           {leader
                             ? `${leader.territory.nombre}${tiedLeaders.length > 1 ? ` (+${tiedLeaders.length - 1} empate)` : ''}${leader.row?.estado === 'preliminar' ? ' · Preliminar' : ''}`
@@ -718,8 +815,9 @@ function App() {
                           <>
                             <span className="kpi-label">Suma seleccionada ({last})</span>
                             <strong className="kpi-value">
-                              {participationSum !== null ? `${number.format(participationSum)}%` : '—'}
+                              {participationSum !== null ? `${dec1Number.format(participationSum)}%` : '—'}
                             </strong>
+                            <span className="kpi-unit">del PIB nominal nacional</span>
                             <span className="kpi-meta">
                               {regionalValues.length > 0
                                 ? `Peso de ${regionalValues.length} ${regionalValues.length === 1 ? 'región' : 'regiones'} en Chile`
@@ -729,9 +827,10 @@ function App() {
                         ) : (
                           <>
                             <span className="kpi-label">Referencia Chile ({last})</span>
-                            <strong className="kpi-value" title={chileRowAtEnd ? display(chileRowAtEnd) : undefined}>
+                            <strong className="kpi-value" title={chileRowAtEnd ? `${display(chileRowAtEnd)} ${chileRowAtEnd.unidad}` : undefined}>
                               {formatKpiValue(chileRowAtEnd)}
                             </strong>
+                            <span className="kpi-unit">{metric.unitShort}</span>
                             <span className="kpi-meta">
                               {chileRowAtEnd?.valor != null
                                 ? `${derived ? `Base ${start}` : 'Total nacional'}${chileRowAtEnd.estado === 'preliminar' ? ' · Preliminar' : ''}`
@@ -741,31 +840,25 @@ function App() {
                         )}
                       </div>
 
-                      <div className="kpi-card">
-                        <span className="kpi-label">Cobertura y período</span>
-                        <strong className="kpi-value">
-                          {releaseCoverage && releaseCoverage.esperadas > 0
-                            ? `${number.format(releaseCoverage.disponibles)} / ${number.format(releaseCoverage.esperadas)}`
-                            : `${number.format(selectedWithValue)} / ${number.format(tableRows.length)}`}
+                      <div className="kpi-card has-info-corner">
+                        <InfoPopover
+                          title="Respaldo técnico de los datos"
+                          label="Ver respaldo técnico y cobertura del corte"
+                          placement="corner"
+                          align="right"
+                        >
+                          <p><strong>Fuente:</strong> {isDemo ? 'Datos sintéticos de demostración local' : 'Banco Central de Chile · Cuentas Nacionales Regionales (BDE)'}.</p>
+                          <p><strong>Cobertura:</strong> {releaseCoverage && releaseCoverage.esperadas > 0
+                            ? `${intNumber.format(releaseCoverage.disponibles)} de ${intNumber.format(releaseCoverage.esperadas)} registros (${dec1Number.format((releaseCoverage.disponibles / releaseCoverage.esperadas) * 100)}%)`
+                            : `${intNumber.format(selectedWithValue)} de ${intNumber.format(tableRows.length)} observaciones con dato`}.</p>
+                          {active?.publication && <p><strong>Identificador interno:</strong> <code>{active.publication}</code></p>}
+                        </InfoPopover>
+                        <span className="kpi-label">Actualización</span>
+                        <strong className="kpi-value is-date">
+                          {chosenPublication ? formatHumanDate(chosenPublication.fecha) : 'Corte local'}
                         </strong>
-                        <span className="kpi-meta">
-                          {releaseCoverage && releaseCoverage.esperadas > 0
-                            ? `${number.format((releaseCoverage.disponibles / releaseCoverage.esperadas) * 100)}% del corte · ${start === last ? start : `${start}–${last}`}`
-                            : `Observaciones con valor · ${start === last ? start : `${start}–${last}`}`}
-                        </span>
-                      </div>
-
-                      <div className="kpi-card">
-                        <span className="kpi-label">Estado del corte</span>
-                        <div className="kpi-value-row">
-                          <span className={`status-badge ${isDemo ? 'is-demo' : 'is-official'}`}>
-                            {isDemo ? 'Prueba' : 'Oficial'}
-                          </span>
-                        </div>
-                        <span className="kpi-meta">
-                          {chosenPublication ? `Extracción ${chosenPublication.fecha.slice(0, 10)}` : 'Corte local'}
-                          {active?.publication ? ` · ${active.publication}` : ''}
-                        </span>
+                        <span className="kpi-unit">{isDemo ? 'Demostración sintética' : 'Datos oficiales · BCCh'}</span>
+                        <span className="kpi-meta">Período {start === last ? start : `${start}–${last}`}</span>
                       </div>
                     </section>
 
