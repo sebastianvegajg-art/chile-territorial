@@ -896,7 +896,10 @@ function App() {
                         </table>
                       </div>
                     )}
-                    <p className="result-source"><strong>Corte</strong> {active?.publication ?? '—'}{isDemo ? ' · Fuente de prueba' : active?.publication ? ` · Fuente: ${chosenPublication?.fuente ?? 'Banco Central de Chile'}` : ''}{chosenPublication && ` · Fecha del corte local: ${chosenPublication.fecha.slice(0, 10)}`}</p>
+                    <p className="result-source">
+                      <strong>Fuente:</strong> {isDemo ? 'Demostración sintética local' : 'Banco Central de Chile · Cuentas Nacionales Regionales'}
+                      {chosenPublication && ` · Actualizado el ${formatHumanDate(chosenPublication.fecha)}`}
+                    </p>
                     {publicTables && <p className="subtle">Niveles de origen redondeados a miles de millones de pesos. <a href={metric.valuation === 'real' ? bdeReal : bdeNominal}>Ver cuadro del Banco Central</a>.</p>}
                   </>
                 )}
