@@ -284,6 +284,47 @@ legend { font-weight: 700; font-size: .87rem; padding: 0 .4rem 0 0; }
 .kpi-card.has-info-corner {
   padding-right: 2.65rem;
 }
+.kpi-card-toggle {
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease;
+}
+.kpi-card-toggle:hover {
+  border-color: var(--accent);
+  background: #f5faf8;
+}
+.kpi-label-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .3rem .45rem;
+  width: 100%;
+}
+.kpi-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e5f1ec;
+  color: var(--accent-dark);
+  font-size: .68rem;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.kpi-chile-ref {
+  display: block;
+  margin-top: .28rem;
+  padding-top: .28rem;
+  border-top: 1px dashed #d5e2db;
+  font-size: .78rem;
+  font-weight: 650;
+  color: #2f4c45;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .kpi-card-accent {
   border-top: 3px solid var(--accent);
   background: #f4faf7;

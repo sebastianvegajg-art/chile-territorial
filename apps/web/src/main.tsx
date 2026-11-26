@@ -194,6 +194,7 @@ function App() {
   const [result, setResult] = useState<{ key: string; rows: Observation[]; publication: string; error: string }>({
     key: '', rows: [], publication: '', error: '',
   })
+  const [companion, setCompanion] = useState<{ key: string; rows: Observation[] }>({ key: '', rows: [] })
   const [detail, setDetail] = useState<{ id: string; row?: Provenance; error?: string } | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState('')
@@ -269,6 +270,30 @@ function App() {
     : null
   const releaseCoverage = chosenPublication?.cobertura
   const selectedWithValue = tableRows.filter(({ row }) => row?.valor != null).length
+
+  const isLevelView = metric.metric === 'nivel' && !derived
+  const companionValuation: Valuation = metric.valuation === 'real' ? 'nominal' : 'real'
+  const companionQuery = new URLSearchParams({
+    anio_desde: '2013', anio_hasta: String(new Date().getFullYear()), metrica: 'nivel', valoracion: companionValuation,
+  })
+  if (publication) companionQuery.set('publicacion', publication)
+  for (const item of territories) companionQuery.append('territorios', item.codigo)
+  const companionKey = isLevelView && publication && territories.length && !metadata.loading && !metadata.error
+    ? companionQuery.toString()
+    : ''
+  const companionActive = companionKey && companionKey === companion.key ? companion.rows : null
+  const companionByKey = new Map(companionActive?.map(row => [`${row.territorio}/${row.anio}`, row]))
+
+  const focusTerritoryCode = leader?.territory.codigo ?? chosen[0]?.codigo
+  const focusTerritoryName = leader?.territory.nombre ?? chosen[0]?.nombre ?? 'Región seleccionada'
+  const realFocusRow = metric.valuation === 'real'
+    ? (focusTerritoryCode ? raw(focusTerritoryCode, last) : undefined)
+    : (focusTerritoryCode ? companionByKey.get(`${focusTerritoryCode}/${last}`) : undefined)
+  const nominalFocusRow = metric.valuation === 'nominal'
+    ? (focusTerritoryCode ? raw(focusTerritoryCode, last) : undefined)
+    : (focusTerritoryCode ? companionByKey.get(`${focusTerritoryCode}/${last}`) : undefined)
+  const realChileRow = metric.valuation === 'real' ? raw('CL', last) : companionByKey.get(`CL/${last}`)
+  const nominalChileRow = metric.valuation === 'nominal' ? raw('CL', last) : companionByKey.get(`CL/${last}`)
 
   function chooseStart(year: number) {
     setStart(year)
@@ -363,6 +388,16 @@ function App() {
     })
     return () => request.abort()
   }, [key, mode, retry])
+
+  useEffect(() => {
+    if (!companionKey) return
+    const request = new AbortController()
+    const filters = new URLSearchParams(companionKey)
+    observations(filters, request.signal).then(data => {
+      if (!request.signal.aborted) setCompanion({ key: companionKey, rows: data.rows })
+    }).catch(() => {})
+    return () => request.abort()
+  }, [companionKey, mode, retry])
 
   function toggle(code: string) {
     setDownloadError('')
@@ -708,7 +743,7 @@ function App() {
                   </label>
                   <label className="field">Hasta
                     <select value={end ?? ''} onChange={event => { setEnd(event.target.value ? Number(event.target.value) : null); setDownloadError('') }}>
-                      <option value="">Último disponible</option>
+                      <option value="">Último año</option>
                       {options.filter(value => value >= start).reverse().map(value => <option key={value}>{value}</option>)}
                     </select>
                   </label>
@@ -797,48 +832,98 @@ function App() {
                 ) : pendingOfficial ? <p className="empty">Aún no hay publicaciones oficiales disponibles. La demostración sintética se activa desde los filtros.</p> : !chosen.length ? <p className="empty">Selecciona al menos una región para comparar.</p> : (
                   <>
                     <section className="kpi-strip is-three" aria-label="Resumen de cifras seleccionadas">
-                      <div className="kpi-card kpi-card-accent">
-                        <span className="kpi-label">{chosen.length === 1 ? `Región seleccionada (${last})` : `Mayor valor regional (${last})`}</span>
-                        <strong className="kpi-value" title={leader?.row ? `${display(leader.row)} ${leader.row.unidad}` : undefined}>
-                          {formatKpiValue(leader?.row)}
-                        </strong>
-                        <span className="kpi-unit">{metric.unitShort}</span>
-                        <span className="kpi-meta">
-                          {leader
-                            ? `${leader.territory.nombre}${tiedLeaders.length > 1 ? ` (+${tiedLeaders.length - 1} empate)` : ''}${leader.row?.estado === 'preliminar' ? ' · Preliminar' : ''}`
-                            : comparableRanking ? 'Sin dato informado' : 'Unidades o referencias distintas'}
-                        </span>
-                      </div>
-
-                      <div className="kpi-card">
-                        {metric.metric === 'participacion' ? (
-                          <>
-                            <span className="kpi-label">Suma seleccionada ({last})</span>
-                            <strong className="kpi-value">
-                              {participationSum !== null ? `${dec1Number.format(participationSum)}%` : '—'}
-                            </strong>
-                            <span className="kpi-unit">del PIB nominal nacional</span>
-                            <span className="kpi-meta">
-                              {regionalValues.length > 0
-                                ? `Peso de ${regionalValues.length} ${regionalValues.length === 1 ? 'región' : 'regiones'} en Chile`
-                                : 'Sin dato comparable'}
+                      {isLevelView ? (
+                        <>
+                          <button
+                            type="button"
+                            className={`kpi-card kpi-card-toggle${measure === 'nivel-real' ? ' kpi-card-accent' : ''}`}
+                            aria-pressed={measure === 'nivel-real'}
+                            onClick={() => { setMeasure('nivel-real'); setDownloadError('') }}
+                          >
+                            <span className="kpi-label-row">
+                              <span className="kpi-label">PIB real ({last})</span>
+                              <span className="kpi-pill">Sin inflación</span>
                             </span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="kpi-label">Referencia Chile ({last})</span>
-                            <strong className="kpi-value" title={chileRowAtEnd ? `${display(chileRowAtEnd)} ${chileRowAtEnd.unidad}` : undefined}>
-                              {formatKpiValue(chileRowAtEnd)}
+                            <strong className="kpi-value" title={realFocusRow ? `${display(realFocusRow)} ${realFocusRow.unidad}` : undefined}>
+                              {formatKpiValue(realFocusRow)}
+                            </strong>
+                            <span className="kpi-unit">millones de pesos · base 2018</span>
+                            <span className="kpi-meta">
+                              {focusTerritoryName}
+                              {realChileRow?.valor != null && (
+                                <span className="kpi-chile-ref">Chile: {formatKpiValue(realChileRow)} MM</span>
+                              )}
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className={`kpi-card kpi-card-toggle${measure === 'nivel-nominal' ? ' kpi-card-accent' : ''}`}
+                            aria-pressed={measure === 'nivel-nominal'}
+                            onClick={() => { setMeasure('nivel-nominal'); setDownloadError('') }}
+                          >
+                            <span className="kpi-label-row">
+                              <span className="kpi-label">PIB nominal ({last})</span>
+                              <span className="kpi-pill">Precios {last}</span>
+                            </span>
+                            <strong className="kpi-value" title={nominalFocusRow ? `${display(nominalFocusRow)} ${nominalFocusRow.unidad}` : undefined}>
+                              {formatKpiValue(nominalFocusRow)}
+                            </strong>
+                            <span className="kpi-unit">millones de pesos corrientes</span>
+                            <span className="kpi-meta">
+                              {focusTerritoryName}
+                              {nominalChileRow?.valor != null && (
+                                <span className="kpi-chile-ref">Chile: {formatKpiValue(nominalChileRow)} MM</span>
+                              )}
+                            </span>
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <div className="kpi-card kpi-card-accent">
+                            <span className="kpi-label">{chosen.length === 1 ? `Región seleccionada (${last})` : `Mayor valor regional (${last})`}</span>
+                            <strong className="kpi-value" title={leader?.row ? `${display(leader.row)} ${leader.row.unidad}` : undefined}>
+                              {formatKpiValue(leader?.row)}
                             </strong>
                             <span className="kpi-unit">{metric.unitShort}</span>
                             <span className="kpi-meta">
-                              {chileRowAtEnd?.valor != null
-                                ? `${derived ? `Base ${start}` : 'Total nacional'}${chileRowAtEnd.estado === 'preliminar' ? ' · Preliminar' : ''}`
-                                : chileRowAtEnd ? status[chileRowAtEnd.estado] : 'Sin dato nacional'}
+                              {leader
+                                ? `${leader.territory.nombre}${tiedLeaders.length > 1 ? ` (+${tiedLeaders.length - 1} empate)` : ''}${leader.row?.estado === 'preliminar' ? ' · Preliminar' : ''}`
+                                : comparableRanking ? 'Sin dato informado' : 'Unidades o referencias distintas'}
                             </span>
-                          </>
-                        )}
-                      </div>
+                          </div>
+
+                          <div className="kpi-card">
+                            {metric.metric === 'participacion' ? (
+                              <>
+                                <span className="kpi-label">Suma seleccionada ({last})</span>
+                                <strong className="kpi-value">
+                                  {participationSum !== null ? `${dec1Number.format(participationSum)}%` : '—'}
+                                </strong>
+                                <span className="kpi-unit">del PIB nominal nacional</span>
+                                <span className="kpi-meta">
+                                  {regionalValues.length > 0
+                                    ? `Peso de ${regionalValues.length} ${regionalValues.length === 1 ? 'región' : 'regiones'} en Chile`
+                                    : 'Sin dato comparable'}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="kpi-label">Referencia Chile ({last})</span>
+                                <strong className="kpi-value" title={chileRowAtEnd ? `${display(chileRowAtEnd)} ${chileRowAtEnd.unidad}` : undefined}>
+                                  {formatKpiValue(chileRowAtEnd)}
+                                </strong>
+                                <span className="kpi-unit">{metric.unitShort}</span>
+                                <span className="kpi-meta">
+                                  {chileRowAtEnd?.valor != null
+                                    ? `${derived ? `Base ${start}` : 'Total nacional'}${chileRowAtEnd.estado === 'preliminar' ? ' · Preliminar' : ''}`
+                                    : chileRowAtEnd ? status[chileRowAtEnd.estado] : 'Sin dato nacional'}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </>
+                      )}
 
                       <div className="kpi-card has-info-corner">
                         <InfoPopover
