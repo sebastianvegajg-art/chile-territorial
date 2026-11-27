@@ -12,3 +12,14 @@ Trabaja en español, dentro de los archivos asignados en [roles](docs/AGENT_ROLE
 - Implementa pruebas automatizadas de regresión, deduplicación, revisiones, faltantes, contratos y fórmulas donde corresponda. Entrega resultados verificables, referencias, supuestos y pendientes.
 - Diseña para teclado, lectores de pantalla, móvil y lectura clara. Ofrece tablas equivalentes a los gráficos y explica el significado de cada indicador.
 - La arquitectura común está aprobada. Inicia la implementación paralela cuando el titular autorice activar los agentes. Aplica la [matriz de archivos compartidos](docs/AGENT_ROLES.md). El despliegue público, contratación y modificación de recursos externos requieren autorización expresa.
+
+## Memoria institucional de Confía Sur
+
+Aplica estas referencias junto con las instrucciones técnicas anteriores:
+
+- [Identidad institucional](docs/IDENTIDAD_INSTITUCIONAL.md): propósito, públicos y lenguaje institucional.
+- [Sistema visual](docs/SISTEMA_VISUAL.md): paleta, tipografías, componentes y continuidad gráfica.
+- [Contexto estratégico](docs/CONTEXTO_ESTRATEGICO.md): áreas estratégicas, funcionalidades y estados reales.
+- [Plan de evolución](docs/PLAN_EVOLUCION.md): trazabilidad pública, límites metodológicos y etapas de trabajo.
+
+Describe cada capacidad como operativa, piloto o en desarrollo según evidencia presente en el código y las fuentes. No atribuyas capacidades futuras a módulos existentes. No llames consolidado a un total fiscal si no se han identificado y conciliado transferencias internas. La identidad institucional orienta la evolución, pero no autoriza a sustituir módulos, metodologías ni datos.

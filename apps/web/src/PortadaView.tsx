@@ -331,15 +331,19 @@ export function PortadaView({ onEnter }: PortadaViewProps) {
           </div>
 
           <div className="portada-heading-group">
-            <p className="portada-kicker">Confía Sur</p>
+            <p className="portada-kicker">CONFÍA SUR</p>
+            <p className="portada-institution">Centro de Pensamiento e Inteligencia Pública Territorial.</p>
             <h1 id="portada-titulo" className="portada-title">
-              Datos públicos para entender Aysén.
+              Inteligencia para la acción pública.
             </h1>
           </div>
 
           <p className="portada-lede">
-            En Confía Sur reunimos y explicamos datos públicos para que cualquier persona pueda entender qué mueve la economía de Aysén, cómo se usan los recursos del Estado y qué cambia en las comunas de la región.
+            Transformamos información pública en conocimiento para comprender los territorios, evaluar las decisiones del Estado y construir mejores políticas públicas.
           </p>
+
+          <p className="portada-territory">Desde Aysén, una mirada hacia Chile.</p>
+          <p className="portada-motto">Conocimiento para comprender. Evidencia para decidir. Inteligencia para transformar.</p>
 
           <div className="portada-actions">
             <button type="button" className="portada-cta" onClick={onEnter}>
@@ -535,6 +539,46 @@ export function PortadaView({ onEnter }: PortadaViewProps) {
           </div>
         </section>
       </div>
+      <section className="portada-areas wrap" id="areas-estrategicas" aria-labelledby="portada-areas-title">
+        <div className="portada-areas-heading">
+          <div>
+            <p className="portada-areas-kicker">Una agenda integrada</p>
+            <h2 id="portada-areas-title">Cinco áreas para comprender y transformar</h2>
+          </div>
+          <p>El observatorio mantiene su acceso directo. Las demás áreas avanzan desde pilotos y líneas de trabajo identificadas.</p>
+        </div>
+        <div className="portada-area-grid">
+          <a className="portada-area-card" href="#comparar">
+            <span className="portada-area-status is-operational">Operativo</span>
+            <h3>Observatorio económico y territorial</h3>
+            <p>Indicadores económicos y territoriales disponibles en el observatorio.</p>
+            <span className="portada-area-link">Explorar observatorio <span aria-hidden="true">→</span></span>
+          </a>
+          <a className="portada-area-card" href="#politica">
+            <span className="portada-area-status is-pilot">Piloto en Aysén</span>
+            <h3>Inteligencia fiscal y gestión pública</h3>
+            <p>Lectura de presupuestos, inversión y ejecución con alcance y límites documentados.</p>
+            <span className="portada-area-link">Ver análisis disponibles <span aria-hidden="true">→</span></span>
+          </a>
+          <a className="portada-area-card" href="#por-gobierno">
+            <span className="portada-area-status is-pilot">Piloto MINVU</span>
+            <h3>Economía política</h3>
+            <p>Explora decisiones y gasto público en el análisis institucional disponible.</p>
+            <span className="portada-area-link">Ver módulo disponible <span aria-hidden="true">→</span></span>
+          </a>
+          <a className="portada-area-card" href="#laboratorio">
+            <span className="portada-area-status is-pilot">Dossiers piloto</span>
+            <h3>Centro de investigación</h3>
+            <p>Documentos y dossiers en etapa piloto, vinculados al análisis territorial.</p>
+            <span className="portada-area-link">Ver dossiers <span aria-hidden="true">→</span></span>
+          </a>
+          <article className="portada-area-card is-planned">
+            <span className="portada-area-status is-development">En desarrollo</span>
+            <h3>Laboratorio de políticas públicas</h3>
+            <p>Línea estratégica para formular y evaluar alternativas de política pública. El módulo está en desarrollo.</p>
+          </article>
+        </div>
+      </section>
     </div>
   )
 }

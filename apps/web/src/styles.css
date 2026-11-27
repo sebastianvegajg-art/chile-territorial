@@ -7421,7 +7421,9 @@ button.proy-billboard.is-selected {
 .portada-shell {
   min-height: 100dvh;
   display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: clamp(2.5rem, 6vw, 5rem);
   background: radial-gradient(circle at 82% 24%, #e9f1ec 0%, #f3f0e9 58%);
   padding-block: clamp(1.5rem, 3.8vw, 3rem);
 }
@@ -7470,6 +7472,16 @@ button.proy-billboard.is-selected {
   color: var(--accent-dark);
 }
 
+.portada-institution {
+  margin: 0;
+  max-width: 38ch;
+  color: var(--dark);
+  font-family: var(--font-display);
+  font-size: clamp(0.96rem, 1.45vw, 1.12rem);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
 .portada-title {
   margin: 0;
   font-family: var(--font-display);
@@ -7486,6 +7498,128 @@ button.proy-billboard.is-selected {
   line-height: 1.65;
   color: #344d47;
   max-width: 48ch;
+}
+
+.portada-territory {
+  margin: 0;
+  color: var(--accent-dark);
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+.portada-motto {
+  margin: -0.35rem 0 0;
+  max-width: 45ch;
+  color: #526b63;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.portada-areas {
+  padding-top: clamp(1.5rem, 4vw, 3rem);
+  border-top: 1px solid #d9e2dc;
+}
+
+.portada-areas-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 1.2rem;
+}
+
+.portada-areas-heading > p {
+  max-width: 47ch;
+  margin: 0;
+  color: #52645e;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.portada-areas-kicker {
+  margin: 0 0 0.35rem;
+  color: var(--accent-dark);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.portada-areas-heading h2 {
+  margin: 0;
+  color: var(--dark);
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 2.4vw, 1.8rem);
+  letter-spacing: -0.025em;
+}
+
+.portada-area-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 0.85rem;
+}
+
+.portada-area-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 1rem 1.05rem;
+  border: 1px solid #d8e3dd;
+  border-radius: 14px;
+  background: #f7faf8;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+a.portada-area-card:hover,
+a.portada-area-card:focus-visible {
+  border-color: #8bb9a8;
+  box-shadow: 0 8px 22px rgba(10, 59, 49, 0.08);
+  transform: translateY(-2px);
+}
+
+.portada-area-card h3 {
+  margin: 0.65rem 0 0.4rem;
+  color: var(--dark);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.portada-area-card p {
+  flex: 1;
+  margin: 0;
+  color: #52645e;
+  font-size: 0.83rem;
+  line-height: 1.5;
+}
+
+.portada-area-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.portada-area-status.is-operational { background: #e3f1eb; color: #075d48; }
+.portada-area-status.is-pilot { background: #edf2ee; color: #46645a; }
+.portada-area-status.is-development { background: #e7eef5; color: #145a94; }
+
+.portada-area-link {
+  margin-top: 0.85rem;
+  color: var(--accent-dark);
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.portada-area-card.is-planned {
+  background: #f7f8f8;
 }
 
 .portada-actions {
@@ -7827,6 +7961,11 @@ button.proy-billboard.is-selected {
   .portada-shell {
     align-items: flex-start;
     padding-block: 1.25rem 2rem;
+  }
+  .portada-areas-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.65rem;
   }
   .portada-cta {
     width: 100%;
