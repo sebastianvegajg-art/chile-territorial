@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "vite",
     "dev:demo": "vite --mode demo",
+    "dev:local": "vite --mode local-preview",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },

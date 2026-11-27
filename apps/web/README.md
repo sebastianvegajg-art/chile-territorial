@@ -1,5 +1,20 @@
 # Comparador regional
 
+## Vista previa local de Confía Sur
+
+En Windows, abre `Ver-Confia-Sur.cmd` desde la raíz del repositorio. El lanzador usa Node.js 22.12 o posterior, instala las dependencias la primera vez y abre [la portada local](http://127.0.0.1:4173/#portada). Deja la terminal abierta mientras revisas. En otros sistemas, desde la raíz del repositorio:
+
+```sh
+npm --prefix apps/web ci
+npm --prefix apps/web run dev:local
+```
+
+El modo local sirve el corte oficial incluido en el repositorio con las mismas rutas de la función de Netlify. Funciona sin iniciar FastAPI ni configurar credenciales. La cobertura corresponde al corte guardado. Consulta [el estado del corte](http://127.0.0.1:4173/healthz).
+
+Vite actualiza la página cuando se guardan cambios de código en esta copia. Para ver nuevos commits de la rama de revisión en otro equipo, sincroniza la rama en Antigravity o usa `git pull --ff-only` con la rama de revisión activa. Si cambia el archivo de dependencias, vuelve a ejecutar `npm --prefix apps/web ci` con el servidor detenido. Si el puerto 4173 ya está en uso, cierra la sesión anterior o abre directamente su dirección local.
+
+## Desarrollo con FastAPI
+
 Requiere Node.js 22.12 o posterior y la API local de Chile Territorial en `127.0.0.1:8000`.
 
 ```sh
